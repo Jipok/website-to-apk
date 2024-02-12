@@ -17,7 +17,7 @@
         android:layout_alignParentRight="true"
         android:layout_alignParentEnd="true"
         android:visibility="gone"
-        />
+    />
 
     <ProgressBar
         android:id="@+id/progressBar1"
@@ -26,5 +26,5 @@
         android:layout_centerHorizontal="true"
         android:layout_centerVertical="true"
         android:layout_centerInParent="true"
-        />
+    />
 </RelativeLayout>

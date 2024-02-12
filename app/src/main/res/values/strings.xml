@@ -1,6 +1,7 @@
 <resources>
-    <string name="app_name">Web  to App</string>
-    <string name="error_message">Error occured, please check your internet connecion.</string>
+    <string name="app_name">My Cute APP</string>
+    <string name="error_message">Check internet connection</string>
+    <string name="exit_app">Tap back again to exit</string>
+    <string name="try_again">Try again</string>
     <string name="notification_error_ssl_cert_invalid">SSL Error! Give Permission</string>
-    <string name="exit_app">Press back again to exit</string>
 </resources>

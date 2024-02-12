@@ -1,13 +1,46 @@
-# web-to-app
+## Website-to-apk
 
-Android source code for android apk file of your website.
+Here is an easy and quick way to make an Android “app” for any website. You don't need Android Studio or Java programming skills. The only file that will have to be edited is the xml with the display name of your application.
+The application is just a wrapper around a WebView.
 
-Easy and fast way of creating android mobile app for your website.
+#### Instruction:
+1) Go to https://developer.android.com/studio#command-line-tools-only and download last cmdline tools. Ex:
+```
+wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+unzip commandlinetools-linux-11076708_latest.zip
+```
+2) Set correct env:
 
-Just change the url in the  MainActivity.java to your website hostname  then you  are  good to go. 
+`export ANDROID_HOME=$PWD/cmdline-tools/`
+3) For SDK need JDK17. Ex:
+```
+export JAVA_HOME=/usr/lib/jvm/openjdk17/
+$JAVA_HOME/bin/java --version
+```
+4) Accept licenses for SDK:
+`$ANDROID_HOME/bin/sdkmanager --sdk_root=$ANDROID_HOME --licenses`
+5) Choose internal name. Should be non-space latin seq. Ex:
+```
+./make.sh rename myexample
+# Will be: com.myexample.webtoapk
+```
 
-You can do customization such  as changing the app icon with your logo and other rich features.
+6) Set main URL for app:
+`./make.sh url https://github.com/Jipok`
+7) Edit `app/src/main/res/values/strings.xml` and set good displayed app name
+8) Now yo need JDK11 for gradle, check `java --version`
+9) Run `./make.sh apk`
+It can take time for first run and fail. Then just try again
+10) You can try debug version: 
+```
+adb install app/build/outputs/apk/debug/app-debug.apk
+# Or
+./make.sh try
+```
+11) Create keys(ONCE) for signing apk:
+`./make.sh keygen`
+12) Sign:
+`./make.sh sign`
+13) Share your app
 
-web-to-app.apk is the built sample from the source code. The app loads https://successtar.github.io/ on launch.
-
-You can install and run web-to-app.apk (android application of your website) on your android phone to see how your website will look like and the behaviour if you use this source code.
+Thank to: https://github.com/successtar/web-to-app
