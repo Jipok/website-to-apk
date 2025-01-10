@@ -27,6 +27,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar spinner;
     private Animation fadeInAnimation;
     String mainURL = "https://github.com/Jipok";
+    boolean enableExternalLinks = true;
     boolean openExternalLinksInBrowser = true;
     boolean requireDoubleBackToExit = true;
 
@@ -83,11 +84,19 @@ public class MainActivity extends AppCompatActivity {
         // Check for external link
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            if (!url.startsWith(mainURL) && openExternalLinksInBrowser) {
-                // Open in system browser
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                view.getContext().startActivity(intent);
-                return true;
+            String urlDomain = Uri.parse(url).getHost();
+            String mainDomain = Uri.parse(mainURL).getHost();
+            
+            if (urlDomain == null || mainDomain == null || !urlDomain.equals(mainDomain)) {
+                if (!enableExternalLinks) {
+                    return true; // Block external links
+                }
+                if (openExternalLinksInBrowser) {
+                    // Open in system browser
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    view.getContext().startActivity(intent);
+                    return true;
+                }
             }
             // Open in our WebView
             view.loadUrl(url);

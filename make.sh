@@ -180,26 +180,34 @@ external_links() {
     local state="$1"
     if [ -z "$state" ]; then
         echo -e "\n${BOLD}External links handling:${NC}"
-        echo -e "  This setting controls how links to other websites are opened:"
-        echo -e "  ${BLUE}ON${NC}  - External links open in system browser"
-        echo -e "  ${BLUE}OFF${NC} - External links open in app's WebView"
-        echo -e "\n${BOLD}Current state:${NC} ${BLUE}$(grep "openExternalLinksInBrowser = " app/src/main/java/com/$appname/webtoapk/*.java | grep -o "true\|false")${NC}"
+        echo -e "  This setting controls how links to other websites are handled:"
+        echo -e "  ${BLUE}browser${NC} - External links open in system browser"
+        echo -e "  ${BLUE}webview${NC} - External links open in app's WebView"
+        echo -e "  ${BLUE}block${NC}   - External links are completely blocked"
+        echo -e "\n${BOLD}Current state:${NC} ${BLUE}$(if grep -q "enableExternalLinks = false" app/src/main/java/com/$appname/webtoapk/*.java; then echo "block"; elif grep -q "openExternalLinksInBrowser = true" app/src/main/java/com/$appname/webtoapk/*.java; then echo "browser"; else echo "webview"; fi)${NC}"
         echo -e "\n${BOLD}Usage:${NC}"
-        echo -e "  ${BLUE}$0 external_links on${NC}"
-        echo -e "  ${BLUE}$0 external_links off${NC}"
+        echo -e "  ${BLUE}$0 external_links browser${NC}"
+        echo -e "  ${BLUE}$0 external_links webview${NC}"
+        echo -e "  ${BLUE}$0 external_links block${NC}"
         exit 1
     fi
     
-    if [ "$state" = "on" ]; then
+    if [ "$state" = "browser" ]; then
+        sed -i 's/boolean enableExternalLinks = false;/boolean enableExternalLinks = true;/' app/src/main/java/com/$appname/webtoapk/*.java
         sed -i 's/boolean openExternalLinksInBrowser = false;/boolean openExternalLinksInBrowser = true;/' app/src/main/java/com/$appname/webtoapk/*.java
         log_success "External links will open in system browser"
-    elif [ "$state" = "off" ]; then
+    elif [ "$state" = "webview" ]; then
+        sed -i 's/boolean enableExternalLinks = false;/boolean enableExternalLinks = true;/' app/src/main/java/com/$appname/webtoapk/*.java
         sed -i 's/boolean openExternalLinksInBrowser = true;/boolean openExternalLinksInBrowser = false;/' app/src/main/java/com/$appname/webtoapk/*.java
         log_success "External links will open in WebView"
+    elif [ "$state" = "block" ]; then
+        sed -i 's/boolean enableExternalLinks = true;/boolean enableExternalLinks = false;/' app/src/main/java/com/$appname/webtoapk/*.java
+        log_success "External links will be blocked"
     else
-        log_error "Invalid option. Use 'on' or 'off'"
+        log_error "Invalid option. Use 'browser', 'webview' or 'block'"
     fi
 }
+
 
 double_back() {
     local state="$1"

@@ -33,7 +33,7 @@ cd website-to-apk
 ./make.sh rename "My App Name"
 ```
 
-5. Generate signing key:
+5. Generate signing key (only needed once, keep the generated file safe):
 ```bash
 ./make.sh keygen
 ```
@@ -69,8 +69,9 @@ To change the app icon, replace the following files:
 ### External Links
 Control how external links are handled:
 ```bash
-./make.sh external_links on   # Opens links in system browser
-./make.sh external_links off  # Opens links in WebView
+./make.sh external_links browser  # Opens links in system browser
+./make.sh external_links webview  # Opens links in WebView
+./make.sh external_links block    # Blocks external links completely
 ```
 
 ### Back Button Behavior
