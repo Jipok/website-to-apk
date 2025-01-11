@@ -5,7 +5,7 @@ A simple tool to convert any website into an Android APK without requiring Andro
 ## Features
 
 - Simple command-line interface with colorful output
-- Automatic Java 11 installation option
+- Automatic Java 17 downloading option
 - Automated Android SDK tools installation
 - APK signing and building process
 
@@ -59,6 +59,15 @@ The final APK will be created in the current directory.
 To change the app icon replace file:
 - `app/src/main/res/mipmap/ic_launcher.png`
 
+## App Links / Deep Links
+
+You can make your app handle links to the website by setting the `deeplink` option in your configuration file. When set, clicking links to your website on the device will open them in your app instead of a browser.
+
+For example, if your website is `https://example.com`, set:
+```ini
+deeplink = example.com
+```
+
 ## Additional WebView Options
 The following advanced options can also be configured:
 ```toml
@@ -76,15 +85,15 @@ MediaPlaybackRequiresUserGesture = false # Disable autoplay of media files
 ## Technical Details
 
 - Target Android API: 33 (Android 13)
-- Minimum Android API: 21 (Android 5.0)
+- Minimum Android API: 24 (Android 7.0)
 - Build tools version: 33.0.2
 - Gradle version: 7.4
-- Required Java version: 11
+- Required Java version: 17
 
 ## Notes
 
 - All app data is stored in the app's private directory
-- The keystore password is set to "123456" by default
+- The keystore `app/my-release-key.jks` password is set to "123456" by default
 - Internet permission is required and automatically included
+- If you need to support [different Android versions](https://apilevels.com/), edit `app/build.gradle` accordingly
 - Based on the original work from: https://github.com/successtar/web-to-app  
-- Default minTargetSdk is set to 24(Android 7). If you need to support [different Android versions](https://apilevels.com/), edit app/build.gradle accordingly

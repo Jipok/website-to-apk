@@ -78,12 +78,14 @@ set_var() {
     
     awk -v var="$var_name" -v val="$new_value" '
     {
-        if ($0 ~ var " *= *.*;" ) {
+        if (!found && $0 ~ var " *= *.*;" ) {
             # Сохраняем начало строки до =
             match($0, "^.*" var " *=")
             before = substr($0, RSTART, RLENGTH)
             # Заменяем значение
             print before " " val ";"
+            # Делаем замену только для первого найденного
+            found = 1
         } else {
             print $0
         }
@@ -94,7 +96,6 @@ set_var() {
         log "Updated $var_name to $new_value"
     else
         rm "$tmp_file"
-        # Значение уже установлено, молча выходим
     fi
 }
 
@@ -119,47 +120,21 @@ apply_config() {
             "name")
                 rename "$value"
                 ;;
+            "deeplink")
+                set_deep_link "$value"
+                ;;
             *)
                 set_var "$key = $value"
                 ;;
         esac
     done < "$config_file"
+
+    # If host was not specified in config, remove deep link host
+    if ! grep -q "^ *deeplink" "$config_file"; then
+        set_deep_link
+    fi
 }
 
-
-get_tools() {
-    info "Downloading Android Command Line Tools..."
-    
-    case "$(uname -s)" in
-        Linux*)     os_type="linux";;
-        Darwin*)    os_type="mac";;
-        *)         error "Unsupported OS";;
-    esac
-    
-    tmp_dir=$(mktemp -d)
-    cd "$tmp_dir"
-    
-    try "wget -q --show-progress 'https://dl.google.com/android/repository/commandlinetools-${os_type}-11076708_latest.zip' -O cmdline-tools.zip"
-    
-    info "Extracting tools..."
-    try "unzip -q cmdline-tools.zip"
-    try "mkdir -p '$ANDROID_HOME/cmdline-tools/latest'"
-    try "mv cmdline-tools/* '$ANDROID_HOME/cmdline-tools/latest/'"
-    
-    cd "$OLDPWD"
-    rm -rf "$tmp_dir"
-
-    info "Accepting licenses..."
-    try "yes | '$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME --licenses"
-    
-    info "Installing necessary SDK components..."
-    try "'$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME \
-        'platform-tools' \
-        'platforms;android-33' \
-        'build-tools;33.0.2'" 
-
-    log "Android SDK successfully installed!"
-}
 
 apk() {
     if [ ! -f "app/my-release-key.jks" ]; then
@@ -276,6 +251,71 @@ rename() {
 }
 
 
+set_deep_link() {
+    local manifest_file="app/src/main/AndroidManifest.xml"
+    local host="$@"
+    
+    local tmp_file=$(mktemp)
+    
+    if [ -z "$host" ]; then
+        # Remove
+        awk '!/android:host=/' "$manifest_file" > "$tmp_file"
+    else
+        # Add or update
+        awk -v host="$host" '
+        /android:host=/           { next }
+        { print }
+        /android:scheme="https"/  { print "                <data android:host=\""host"\" />"; next }
+        ' "$manifest_file" > "$tmp_file"
+    fi
+    
+    if ! diff -q "$manifest_file" "$tmp_file" >/dev/null; then
+        if [ -z "$host" ]; then
+            log "Removing deep link host configuration"
+        else
+            log "Setting deep link host to: $host"
+        fi
+        try mv "$tmp_file" "$manifest_file"
+    else
+        rm "$tmp_file"
+    fi
+}
+
+
+get_tools() {
+    info "Downloading Android Command Line Tools..."
+    
+    case "$(uname -s)" in
+        Linux*)     os_type="linux";;
+        Darwin*)    os_type="mac";;
+        *)         error "Unsupported OS";;
+    esac
+    
+    tmp_dir=$(mktemp -d)
+    cd "$tmp_dir"
+    
+    try "wget -q --show-progress 'https://dl.google.com/android/repository/commandlinetools-${os_type}-11076708_latest.zip' -O cmdline-tools.zip"
+    
+    info "Extracting tools..."
+    try "unzip -q cmdline-tools.zip"
+    try "mkdir -p '$ANDROID_HOME/cmdline-tools/latest'"
+    try "mv cmdline-tools/* '$ANDROID_HOME/cmdline-tools/latest/'"
+    
+    cd "$OLDPWD"
+    rm -rf "$tmp_dir"
+
+    info "Accepting licenses..."
+    try "yes | '$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME --licenses"
+    
+    info "Installing necessary SDK components..."
+    try "'$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME \
+        'platform-tools' \
+        'platforms;android-33' \
+        'build-tools;33.0.2'" 
+
+    log "Android SDK successfully installed!"
+}
+
 
 reinstall_gradle() {
     info "Reinstalling Gradle..."
@@ -376,7 +416,7 @@ check_and_find_java() {
 }
 
 build() {
-    apply_config
+    apply_config "$1"
     apk
 }
 

@@ -26,6 +26,9 @@ import android.webkit.JsPromptResult;
 import android.widget.FrameLayout;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.graphics.Bitmap;
+
+// import android.util.Log;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -33,6 +36,10 @@ public class MainActivity extends AppCompatActivity {
     private WebView webview;
     private ProgressBar spinner;
     private Animation fadeInAnimation;
+    private View mainLayout;
+    private View errorLayout;
+    private ViewGroup parentLayout;
+    private boolean errorOccurred = false; // For WebView after tryAgain
 
     String mainURL = "https://github.com/Jipok";
     boolean requireDoubleBackToExit = true;
@@ -56,6 +63,18 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        mainLayout = findViewById(android.R.id.content);
+        parentLayout = (ViewGroup) mainLayout.getParent();
+
+        // Handle intent
+        Intent intent = getIntent();
+        String action = intent.getAction();
+        Uri data = intent.getData();
+        // Log.d("DeepLink", "Action: " + action);
+        // Log.d("DeepLink", "Data: " + data);
+        if (Intent.ACTION_VIEW.equals(action) && data != null) {
+            mainURL = data.toString();
+        }
 
         fadeInAnimation = AnimationUtils.loadAnimation(this, R.anim.fade_in);
 
@@ -190,6 +209,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    
     /**
      * This allows for a splash screen
      * Hide elements once the page loads
@@ -282,21 +302,25 @@ public class MainActivity extends AppCompatActivity {
 
         // Animation on app open
         @Override
-        public void onPageFinished(WebView view, String url) {
-            if (!view.isShown()) {
+        public void onPageFinished(WebView webview, String url) {
+            // Без флага errorOccurred у нас будет видно ошибку webview пока идёт анимация после tryAgain
+            if (!errorOccurred) {
                 spinner.setVisibility(View.GONE);
-                view.startAnimation(fadeInAnimation);
-                view.setVisibility(View.VISIBLE);
+                if (!webview.isShown()) {
+                    webview.startAnimation(fadeInAnimation);
+                    webview.setVisibility(View.VISIBLE);
+                }
             }
-            super.onPageFinished(view, url);
+            super.onPageFinished(webview, url);
         }
 
-        // Show custom error page
+        // Show custom error page with `tryAgain` button
         @Override
         public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-            mainURL = view.getUrl();
-            MainActivity.this.setContentView(R.layout.error);
-            super.onReceivedError(view, errorCode, description, failingUrl);
+            errorOccurred = true;
+            errorLayout = getLayoutInflater().inflate(R.layout.error, parentLayout, false);
+            parentLayout.removeView(mainLayout);
+            parentLayout.addView(errorLayout);
         }
     }
 
@@ -325,14 +349,11 @@ public class MainActivity extends AppCompatActivity {
 
     /* Retry Loading the page */
     public void tryAgain(View v) {
-        setContentView(R.layout.activity_main);
-        webview = findViewById(R.id.webView);
-        spinner = findViewById(R.id.progressBar1);
-        webview.setWebViewClient(new CustomWebViewClient());
-
-        webview.getSettings().setJavaScriptEnabled(true);
-        webview.getSettings().setDomStorageEnabled(true);
-        webview.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
-        webview.loadUrl(mainURL);
+        parentLayout.removeView(errorLayout);
+        parentLayout.addView(mainLayout);
+        webview.setVisibility(View.GONE); 
+        spinner.setVisibility(View.VISIBLE);
+        errorOccurred = false;
+        webview.reload();
     }
 }
