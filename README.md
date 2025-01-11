@@ -17,75 +17,44 @@ git clone https://github.com/Jipok/website-to-apk
 cd website-to-apk
 ```
 
-2. Set the application ID (internal name):
-```bash
-./make.sh chid myapp
-# This will set package name to com.myapp.webtoapk
+2. Create a configuration file `webapk.conf`:
+```ini
+id=myapp                          # Application ID (will be com.myapp.webtoapk)
+name=My App Name                  # Display name of the app
+mainURL=https://example.com       # Target website URL
+enableExternalLinks=true          # Allow/block external links
+openExternalLinksInBrowser=true   # If allowed: open external links in browser or WebView
+requireDoubleBackToExit=true      # Require double-back to exit
 ```
 
-3. Set the website URL:
-```bash
-./make.sh url https://example.com
-```
-
-4. Set the display name:
-```bash
-./make.sh rename "My App Name"
-```
-
-5. Generate signing key (only needed once, keep the generated file safe):
+3. Generate signing key (only needed once, keep the generated file safe):
 ```bash
 ./make.sh keygen
 ```
 
-6. Build the APK:
+4. Apply configuration and build:
 ```bash
-./make.sh apk
+./make.sh build
 ```
 
 The final APK will be created in the current directory.
 
 ## Available Commands
 
-- `./make.sh chid NAME` - Set application ID (package name)
-- `./make.sh rename NAME` - Set display name of the app
-- `./make.sh url URL` - Set website URL
+- `./make.sh build` - Apply configuration and build
 - `./make.sh keygen` - Generate signing key
-- `./make.sh apk` - Build signed APK
-- `./make.sh external_links` - Configure external links handling (on/off)
-- `./make.sh double_back` - Configure double-back-to-exit behavior (on/off)
-- `./make.sh try` - Install and test APK on connected device
+- `./make.sh test` - Install and test APK on connected device
 - `./make.sh clean` - Clean build files
+- `./make.sh apply_config` - Apply settings from configuration file
+- `./make.sh apk` - Build signed APK
 - `./make.sh get_tools` - Download Android command-line tools
-- `./make.sh get_java` - Download OpenJDK 11 locally
+- `./make.sh get_java` - Download OpenJDK 17 locally
 
-## Configuration Options
 
-### Custom Icon
+## Custom Icon
 To change the app icon, replace the following files:
 - `app/src/main/res/drawable/icon.png`
 - `app/src/main/res/drawable/icon_round.png`
-
-### External Links
-Control how external links are handled:
-```bash
-./make.sh external_links browser  # Opens links in system browser
-./make.sh external_links webview  # Opens links in WebView
-./make.sh external_links block    # Blocks external links completely
-```
-
-### Back Button Behavior
-Configure the back button behavior:
-```bash
-./make.sh double_back on   # Requires double-press to exit
-./make.sh double_back off  # Exits immediately when can't go back
-```
-
-### Clean Build
-If you encounter build issues, try cleaning:
-```bash
-./make.sh clean
-```
 
 ## Technical Details
 
