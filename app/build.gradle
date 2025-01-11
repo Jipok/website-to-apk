@@ -23,7 +23,7 @@ android {
     compileSdkVersion 33
     defaultConfig {
         applicationId "com.myexample.webtoapk"
-        minSdkVersion 21
+        minSdkVersion 24
         targetSdkVersion 33
         versionCode 1
         versionName "1.0"

@@ -87,3 +87,4 @@ MediaPlaybackRequiresUserGesture = false # Disable autoplay of media files
 - The keystore password is set to "123456" by default
 - Internet permission is required and automatically included
 - Based on the original work from: https://github.com/successtar/web-to-app  
+- Default minTargetSdk is set to 24(Android 7). If you need to support [different Android versions](https://apilevels.com/), edit app/build.gradle accordingly
