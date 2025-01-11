@@ -4,4 +4,6 @@
     <string name="exit_app">Tap back again to exit</string>
     <string name="try_again">Try again</string>
     <string name="notification_error_ssl_cert_invalid">SSL Error! Give Permission</string>
+    <string name="external_link">External Link</string>
+    <string name="open_in_browser">Open this link in browser?</string>
 </resources>

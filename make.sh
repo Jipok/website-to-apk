@@ -189,7 +189,9 @@ apk() {
 test() {
     info "Detected app name: $appname"
     try "adb install app/build/outputs/apk/release/app-release.apk"
+    try "adb logcat -c" # clean logs
     try "adb shell am start -n com.$appname.webtoapk/.MainActivity"
+    adb logcat *:I | grep com.$appname.webtoapk
 
 	# https://stackoverflow.com/questions/29072501/how-to-unlock-android-phone-through-adb
 	# adb shell input keyevent 26 #Pressing the lock button

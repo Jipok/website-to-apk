@@ -23,6 +23,8 @@ import android.content.res.Configuration;
 import android.widget.EditText;
 import android.webkit.JsResult;
 import android.webkit.JsPromptResult;
+import android.widget.FrameLayout;
+import android.view.ViewGroup;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -31,14 +33,21 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar spinner;
     private Animation fadeInAnimation;
     String mainURL = "https://github.com/Jipok";
+    boolean requireDoubleBackToExit = true;
+    boolean allowSubdomains = true;
+
     boolean enableExternalLinks = true;
     boolean openExternalLinksInBrowser = true;
-    boolean requireDoubleBackToExit = true;
+    boolean confirmOpenInBrowser = true;
 
-    boolean JavaScriptEnabled = true;
-    boolean JavaScriptCanOpenWindowsAutomatically = true;
+    boolean JSEnabled = true;
+    boolean JSCanOpenWindowsAutomatically = true;
     boolean DomStorageEnabled = true;
-    boolean GeolocationEnabled = true;
+    boolean DatabaseEnabled = true;
+    boolean MediaPlaybackRequiresUserGesture = false;
+    boolean SavePassword = true;
+
+    boolean GeolocationEnabled = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,17 +62,24 @@ public class MainActivity extends AppCompatActivity {
         webview.setWebChromeClient(new CustomWebChrome());
 
         WebSettings webSettings = webview.getSettings();
-        webSettings.setJavaScriptEnabled(JavaScriptEnabled);
-        webSettings.setJavaScriptCanOpenWindowsAutomatically(JavaScriptCanOpenWindowsAutomatically);
+        webSettings.setJavaScriptEnabled(JSEnabled);
+        webSettings.setJavaScriptCanOpenWindowsAutomatically(JSCanOpenWindowsAutomatically);
         webSettings.setGeolocationEnabled(GeolocationEnabled);
         webSettings.setDomStorageEnabled(DomStorageEnabled);
+        webSettings.setDatabaseEnabled(DatabaseEnabled);
+        webSettings.setMediaPlaybackRequiresUserGesture(MediaPlaybackRequiresUserGesture);
+        webSettings.setSavePassword(SavePassword);
+
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         webview.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
 
         webview.loadUrl(mainURL);
     }
 
-    // Remove "Confirm URL" title from js alert/dialog/confirm
+    /* This allows:
+        Remove "Confirm URL" title from js alert/dialog/confirm
+        Open HTML5 video in fullscreen
+    */        
     private class CustomWebChrome extends WebChromeClient {
         @Override
         public boolean onJsAlert(WebView view, String url, String message, final android.webkit.JsResult result) {
@@ -128,6 +144,42 @@ public class MainActivity extends AppCompatActivity {
                 .show();
             return true;
         }
+        //////////////////////
+        private View mCustomView;
+        private WebChromeClient.CustomViewCallback mCustomViewCallback;
+        private int mOriginalOrientation;
+        private int mOriginalSystemUiVisibility;
+
+        @Override
+        public void onHideCustomView() {
+            ((FrameLayout)getWindow().getDecorView()).removeView(mCustomView);
+            mCustomView = null;
+            getWindow().getDecorView().setSystemUiVisibility(mOriginalSystemUiVisibility);
+            setRequestedOrientation(mOriginalOrientation);
+            mCustomViewCallback.onCustomViewHidden();
+            mCustomViewCallback = null;
+        }
+
+        @Override
+        public void onShowCustomView(View view, WebChromeClient.CustomViewCallback callback) {
+            if (mCustomView != null) {
+                onHideCustomView();
+                return;
+            }
+            mCustomView = view;
+            mOriginalSystemUiVisibility = getWindow().getDecorView().getSystemUiVisibility();
+            mOriginalOrientation = getRequestedOrientation();
+            mCustomViewCallback = callback;
+            ((FrameLayout)getWindow().getDecorView()).addView(mCustomView, 
+                new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 
+                ViewGroup.LayoutParams.MATCH_PARENT));
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                    View.SYSTEM_UI_FLAG_FULLSCREEN |
+                    View.SYSTEM_UI_FLAG_IMMERSIVE);
+        }
     }
 
     /**
@@ -166,18 +218,56 @@ public class MainActivity extends AppCompatActivity {
             String urlDomain = Uri.parse(url).getHost();
             String mainDomain = Uri.parse(mainURL).getHost();
             
-            if (urlDomain == null || mainDomain == null || !urlDomain.equals(mainDomain)) {
-                if (!enableExternalLinks) {
-                    return true; // Block external links
-                }
-                if (openExternalLinksInBrowser) {
-                    // Open in system browser
+            // Safety check for malformed URLs
+            if (urlDomain == null || mainDomain == null) {
+                return handleExternalLink(url, view);
+            }
+
+            // Check if domains match (including subdomains if enabled)
+            boolean isInternalLink;
+            if (allowSubdomains) {
+                // Allow:
+                //   youtube.com -> m.youtube.com
+                //   m.youtube.com -> youtube.com
+                isInternalLink = urlDomain.endsWith(mainDomain) || mainDomain.endsWith(urlDomain);
+            } else {
+                isInternalLink = urlDomain.equals(mainDomain);
+            }
+
+            if (isInternalLink) {
+                view.loadUrl(url);
+                return false;
+            }
+
+            return handleExternalLink(url, view);
+        }
+
+        private boolean handleExternalLink(String url, WebView view) {
+            if (!enableExternalLinks) {
+                return true; // Block external links
+            }
+            if (openExternalLinksInBrowser) {
+                if (confirmOpenInBrowser) {
+                    new AlertDialog.Builder(view.getContext())
+                        .setTitle(R.string.external_link)
+                        .setMessage(R.string.open_in_browser)
+                        .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                                view.getContext().startActivity(intent);
+                            }
+                        })
+                        .setNegativeButton(android.R.string.no, null)
+                        .show();
+                    return true;
+                } else {
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                     view.getContext().startActivity(intent);
                     return true;
                 }
             }
-            // Open in our WebView
+            // Open in WebView
             view.loadUrl(url);
             return false;
         }

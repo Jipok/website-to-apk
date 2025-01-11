@@ -19,12 +19,16 @@ cd website-to-apk
 
 2. Create a configuration file `webapk.conf`:
 ```ini
-id=myapp                          # Application ID (will be com.myapp.webtoapk)
-name=My App Name                  # Display name of the app
-mainURL=https://example.com       # Target website URL
-enableExternalLinks=true          # Allow/block external links
-openExternalLinksInBrowser=true   # If allowed: open external links in browser or WebView
-requireDoubleBackToExit=true      # Require double-back to exit
+id = myapp                          # Application ID (will be com.myapp.webtoapk)
+name = My App Name                  # Display name of the app
+mainURL = https://example.com       # Target website URL
+
+allowSubdomains = true              # Allow navigation between example.com and sub.example.com
+requireDoubleBackToExit = true      # Require double back press to exit app
+
+enableExternalLinks = true          # Allow/block external links
+openExternalLinksInBrowser = true   # If allowed: open external links in browser or WebView
+confirmOpenInBrowser = true         # Show confirmation before opening external browser
 ```
 
 3. Generate signing key (only needed once, keep the generated file safe):
@@ -55,6 +59,19 @@ The final APK will be created in the current directory.
 To change the app icon, replace the following files:
 - `app/src/main/res/drawable/icon.png`
 - `app/src/main/res/drawable/icon_round.png`
+
+## Additional WebView Options
+The following advanced options can also be configured:
+```ini
+JSEnabled = true                    # Enable JavaScript execution
+JSCanOpenWindowsAutomatically = true # Allow JS to open new windows/popups
+
+DomStorageEnabled = true            # Enable HTML5 DOM storage
+DatabaseEnabled = true              # Enable HTML5 Web SQL Database
+SavePassword = true                 # Allow saving passwords in WebView
+
+MediaPlaybackRequiresUserGesture = false # Disable autoplay of media files
+```
 
 ## Technical Details
 
