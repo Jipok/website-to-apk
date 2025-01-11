@@ -9,6 +9,7 @@ import android.view.KeyEvent;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebChromeClient;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.Toast;
@@ -19,6 +20,9 @@ import android.view.animation.AnimationUtils;
 import android.content.Intent;
 import android.net.Uri;
 import android.content.res.Configuration;
+import android.widget.EditText;
+import android.webkit.JsResult;
+import android.webkit.JsPromptResult;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -31,6 +35,11 @@ public class MainActivity extends AppCompatActivity {
     boolean openExternalLinksInBrowser = true;
     boolean requireDoubleBackToExit = true;
 
+    boolean JavaScriptEnabled = true;
+    boolean JavaScriptCanOpenWindowsAutomatically = true;
+    boolean DomStorageEnabled = true;
+    boolean GeolocationEnabled = true;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -41,14 +50,84 @@ public class MainActivity extends AppCompatActivity {
         webview = findViewById(R.id.webView);
         spinner = findViewById(R.id.progressBar1);
         webview.setWebViewClient(new CustomWebViewClient());
+        webview.setWebChromeClient(new CustomWebChrome());
 
         WebSettings webSettings = webview.getSettings();
-        webSettings.setJavaScriptEnabled(true);
-        webSettings.setDomStorageEnabled(true);
+        webSettings.setJavaScriptEnabled(JavaScriptEnabled);
+        webSettings.setJavaScriptCanOpenWindowsAutomatically(JavaScriptCanOpenWindowsAutomatically);
+        webSettings.setGeolocationEnabled(GeolocationEnabled);
+        webSettings.setDomStorageEnabled(DomStorageEnabled);
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         webview.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
 
         webview.loadUrl(mainURL);
+    }
+
+    // Remove "Confirm URL" title from js alert/dialog/confirm
+    private class CustomWebChrome extends WebChromeClient {
+        @Override
+        public boolean onJsAlert(WebView view, String url, String message, final android.webkit.JsResult result) {
+            new AlertDialog.Builder(MainActivity.this)
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        result.confirm();
+                    }
+                })
+                .setCancelable(false)
+                .create()
+                .show();
+            return true;
+        }
+
+        @Override
+        public boolean onJsConfirm(WebView view, String url, String message, final JsResult result) {
+            new AlertDialog.Builder(MainActivity.this)
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        result.confirm();
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        result.cancel();
+                    }
+                })
+                .setCancelable(false)
+                .create()
+                .show();
+            return true;
+        }
+
+        @Override
+        public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, final JsPromptResult result) {
+            final EditText input = new EditText(MainActivity.this);
+            input.setText(defaultValue);
+            
+            new AlertDialog.Builder(MainActivity.this)
+                .setMessage(message)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        result.confirm(input.getText().toString());
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        result.cancel();
+                    }
+                })
+                .setCancelable(false)
+                .create()
+                .show();
+            return true;
+        }
     }
 
     /**
@@ -118,7 +197,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
             mainURL = view.getUrl();
-            MainActivity.this.setContentView(R.layout.error);  // Исправлено
+            MainActivity.this.setContentView(R.layout.error);
             super.onReceivedError(view, errorCode, description, failingUrl);
         }
     }
