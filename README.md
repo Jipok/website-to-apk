@@ -56,19 +56,19 @@ The final APK will be created in the current directory.
 
 
 ## Custom Icon
-To change the app icon, replace the following files:
-- `app/src/main/res/drawable/icon.png`
-- `app/src/main/res/drawable/icon_round.png`
+To change the app icon replace file:
+- `app/src/main/res/mipmap/ic_launcher.png`
 
 ## Additional WebView Options
 The following advanced options can also be configured:
-```ini
-JSEnabled = true                    # Enable JavaScript execution
-JSCanOpenWindowsAutomatically = true # Allow JS to open new windows/popups
+```toml
+cookies = "key1=value1; key2=value2"  # Cookies for mainURL
+JSEnabled = true                      # Enable JavaScript execution
+JSCanOpenWindowsAutomatically = true  # Allow JS to open new windows/popups
 
-DomStorageEnabled = true            # Enable HTML5 DOM storage
-DatabaseEnabled = true              # Enable HTML5 Web SQL Database
-SavePassword = true                 # Allow saving passwords in WebView
+DomStorageEnabled = true              # Enable HTML5 DOM storage
+DatabaseEnabled = true                # Enable HTML5 Web SQL Database
+SavePassword = true                   # Allow saving passwords in WebView
 
 MediaPlaybackRequiresUserGesture = false # Disable autoplay of media files
 ```

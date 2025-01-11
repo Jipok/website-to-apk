@@ -25,6 +25,7 @@ import android.webkit.JsResult;
 import android.webkit.JsPromptResult;
 import android.widget.FrameLayout;
 import android.view.ViewGroup;
+import android.webkit.CookieManager;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -32,6 +33,7 @@ public class MainActivity extends AppCompatActivity {
     private WebView webview;
     private ProgressBar spinner;
     private Animation fadeInAnimation;
+
     String mainURL = "https://github.com/Jipok";
     boolean requireDoubleBackToExit = true;
     boolean allowSubdomains = true;
@@ -40,6 +42,7 @@ public class MainActivity extends AppCompatActivity {
     boolean openExternalLinksInBrowser = true;
     boolean confirmOpenInBrowser = true;
 
+    String cookies = "";
     boolean JSEnabled = true;
     boolean JSCanOpenWindowsAutomatically = true;
     boolean DomStorageEnabled = true;
@@ -72,6 +75,11 @@ public class MainActivity extends AppCompatActivity {
 
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         webview.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
+
+        CookieManager cookieManager = CookieManager.getInstance();
+        cookieManager.setAcceptCookie(true);
+        cookieManager.setCookie(mainURL, cookies);
+        cookieManager.flush();
 
         webview.loadUrl(mainURL);
     }
