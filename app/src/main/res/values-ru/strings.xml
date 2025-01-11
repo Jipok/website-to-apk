@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Моё Милое Приложение</string>
+    <string name="error_message">Проверьте подключение к интернету</string>
+    <string name="exit_app">Нажмите ещё раз для выхода</string>
+    <string name="try_again">Повторить</string>  
+    <string name="notification_error_ssl_cert_invalid">Ошибка SSL! Требуется разрешение</string>
+    <string name="external_link">Внешняя ссылка</string>
+    <string name="open_in_browser">Открыть эту ссылку в браузере?</string>
+</resources>

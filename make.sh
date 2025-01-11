@@ -255,19 +255,26 @@ rename() {
         error "Please provide a display name\nUsage: $0 display_name \"My App Name\""
     fi
     
-    xml_file="app/src/main/res/values/strings.xml"
-    [ ! -f "$xml_file" ] && error "strings.xml not found"
-
-    current_name=$(grep -o 'app_name">[^<]*' "$xml_file" | cut -d'>' -f2)
-    if [ "$current_name" = "$new_name" ]; then
-        return 0
-    fi
-    
-    escaped_name=$(echo "$new_name" | sed 's/[\/&]/\\&/g')
-    try sed -i "s|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">$escaped_name</string>|" "$xml_file" 
-    
-    log "Display name changed to: $new_name"
+    # Найти все файлы strings.xml в различных языковых директориях
+    find app/src/main/res/values* -name "strings.xml" | while read xml_file; do
+        current_name=$(grep -o 'app_name">[^<]*' "$xml_file" | cut -d'>' -f2)
+        if [ "$current_name" = "$new_name" ]; then
+            continue
+        fi
+        
+        escaped_name=$(echo "$new_name" | sed 's/[\/&]/\\&/g')
+        try sed -i "s|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">$escaped_name</string>|" "$xml_file"
+        
+        # Получаем код языка из пути файла
+        lang_code=$(echo "$xml_file" | grep -o 'values-[^/]*' | cut -d'-' -f2)
+        if [ -z "$lang_code" ]; then
+            lang_code="default"
+        fi
+        
+        log "Display name changed to: $new_name (${lang_code})"
+    done
 }
+
 
 
 reinstall_gradle() {

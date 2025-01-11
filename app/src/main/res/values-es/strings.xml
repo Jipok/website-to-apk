@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mi Linda Aplicación</string>
+    <string name="error_message">Compruebe la conexión a Internet</string>
+    <string name="exit_app">Pulse de nuevo para salir</string>
+    <string name="try_again">Intentar de nuevo</string>
+    <string name="notification_error_ssl_cert_invalid">¡Error SSL! Se requiere permiso</string>
+    <string name="external_link">Enlace externo</string>
+    <string name="open_in_browser">¿Abrir este enlace en el navegador?</string>
+</resources>

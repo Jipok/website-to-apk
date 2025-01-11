@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Meine Süße App</string>
+    <string name="error_message">Internetverbindung überprüfen</string>
+    <string name="exit_app">Zum Beenden nochmal tippen</string>
+    <string name="try_again">Erneut versuchen</string>
+    <string name="notification_error_ssl_cert_invalid">SSL-Fehler! Berechtigung erforderlich</string>
+    <string name="external_link">Externer Link</string>
+    <string name="open_in_browser">Diesen Link im Browser öffnen?</string>
+</resources>

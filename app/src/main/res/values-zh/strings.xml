@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">我的可爱应用</string>
+    <string name="error_message">请检查网络连接</string>
+    <string name="exit_app">再次点击退出</string>
+    <string name="try_again">重试</string>
+    <string name="notification_error_ssl_cert_invalid">SSL错误！需要授权</string>
+    <string name="external_link">外部链接</string>
+    <string name="open_in_browser">在浏览器中打开此链接？</string>
+</resources>
