@@ -126,6 +126,9 @@ apply_config() {
             "icon")
                 set_icon "$value"
                 ;;
+            "scripts")
+                set_userscripts "$value"
+                ;;
             *)
                 set_var "$key = $value"
                 ;;
@@ -138,6 +141,9 @@ apply_config() {
     fi
     if ! grep -q "^ *icon" "$config_file"; then
         set_icon
+    fi
+    if ! grep -q "^ *scripts" "$config_file"; then
+        set_userscripts
     fi
 }
 
@@ -325,6 +331,92 @@ set_icon() {
     # Copy icon
     try "cp \"$icon_path\" \"$dest_file\""
     log "Icon updated successfully"
+}
+
+
+set_userscripts() {
+    local scripts_dir="app/src/main/assets/userscripts"
+    
+    # Create destination directory if it doesn't exist
+    mkdir -p "$scripts_dir"
+    
+    # If no arguments provided, clean destination and exit
+    if [ $# -eq 0 ]; then
+        if [ -n "$(ls -A $scripts_dir 2>/dev/null)" ]; then
+            rm -rf "${scripts_dir:?}"/*
+            log "Userscripts directory cleared"
+        fi
+        return 0
+    fi
+
+    # Track changes for reporting
+    local added=()
+    local updated=()
+    local removed=()
+    
+    # Create temporary list of source files
+    local tmp_list=$(mktemp)
+    
+    # Expand all arguments and patterns to file list
+    for pattern in "$@"; do
+        # Handle both direct files and glob patterns
+        for file in $pattern; do
+            if [ -f "$file" ]; then
+                echo "$file" >> "$tmp_list"
+            fi
+        done
+    done
+
+    # Find files to remove (exist in dest but not in source list)
+    while IFS= read -r -d '' dest_file; do
+        local base_name=$(basename "$dest_file")
+        if ! grep -q -F "$(basename "$dest_file")" "$tmp_list"; then
+            rm "$dest_file"
+            removed+=("$base_name")
+        fi
+    done < <(find "$scripts_dir" -type f -print0)
+
+    # Copy new and changed files
+    while IFS= read -r src_file; do
+        local base_name=$(basename "$src_file")
+        local dest_file="$scripts_dir/$base_name"
+        
+        if [ ! -f "$dest_file" ]; then
+            # New file
+            cp "$src_file" "$dest_file"
+            added+=("$base_name")
+        elif ! cmp -s "$src_file" "$dest_file"; then
+            # Changed file
+            cp "$src_file" "$dest_file"
+            updated+=("$base_name")
+        fi
+    done < "$tmp_list"
+
+    rm -f "$tmp_list"
+
+    # Report changes only if there were any
+    if [ ${#removed[@]} -gt 0 ]; then
+        for script in "${removed[@]}"; do
+            log "Removed userscript: $script"
+        done
+    fi
+    
+    if [ ${#added[@]} -gt 0 ]; then
+        for script in "${added[@]}"; do
+            log "Added userscript: $script"
+        done
+    fi
+    
+    if [ ${#updated[@]} -gt 0 ]; then
+        for script in "${updated[@]}"; do
+            log "Updated userscript: $script"
+        done
+    fi
+
+    # If no changes were made, stay silent
+    if [ ${#removed[@]} -eq 0 ] && [ ${#added[@]} -eq 0 ] && [ ${#updated[@]} -eq 0 ]; then
+        return 0
+    fi
 }
 
 

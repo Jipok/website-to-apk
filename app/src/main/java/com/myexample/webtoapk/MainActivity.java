@@ -27,13 +27,19 @@ import android.widget.FrameLayout;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.graphics.Bitmap;
-
-// import android.util.Log;
+import android.util.Log;
+import android.webkit.ConsoleMessage;
+import android.graphics.Color;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import androidx.annotation.Nullable;
+import java.io.ByteArrayInputStream;
 
 
 public class MainActivity extends AppCompatActivity {
 
     private WebView webview;
+    private UserScriptManager userScriptManager;
     private ProgressBar spinner;
     private Animation fadeInAnimation;
     private View mainLayout;
@@ -56,6 +62,8 @@ public class MainActivity extends AppCompatActivity {
     boolean DatabaseEnabled = true;
     boolean MediaPlaybackRequiresUserGesture = false;
     boolean SavePassword = true;
+    boolean AllowFileAccess = true;
+    boolean AllowFileAccessFromFileURLs = true;
 
     boolean GeolocationEnabled = false;
 
@@ -65,13 +73,14 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         mainLayout = findViewById(android.R.id.content);
         parentLayout = (ViewGroup) mainLayout.getParent();
+        userScriptManager = new UserScriptManager(this);
 
         // Handle intent
         Intent intent = getIntent();
         String action = intent.getAction();
         Uri data = intent.getData();
-        // Log.d("DeepLink", "Action: " + action);
-        // Log.d("DeepLink", "Data: " + data);
+        Log.d("WebToApk", "Action: " + action);
+        Log.d("WebToApk", "Data: " + data);
         if (Intent.ACTION_VIEW.equals(action) && data != null) {
             mainURL = data.toString();
         }
@@ -91,6 +100,8 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setDatabaseEnabled(DatabaseEnabled);
         webSettings.setMediaPlaybackRequiresUserGesture(MediaPlaybackRequiresUserGesture);
         webSettings.setSavePassword(SavePassword);
+        webSettings.setAllowFileAccess(AllowFileAccess);
+        webSettings.setAllowFileAccessFromFileURLs(AllowFileAccessFromFileURLs);
 
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         webview.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
@@ -104,10 +115,32 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /* This allows:
-        Remove "Confirm URL" title from js alert/dialog/confirm
+        Remove "Confirm URL" title from js log/alert/dialog/confirm
         Open HTML5 video in fullscreen
     */        
     private class CustomWebChrome extends WebChromeClient {
+        @Override
+        public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+            String message = consoleMessage.message();
+            
+            // Check for userscript 
+            // Ловим любые ANSI-окрашенные сообщения в квадратных скобках
+            if (message.matches("\\033\\[.*?m\\[.*?\\]\\033\\[0m.*")) {
+                Log.d("WebToApk", message);
+            } else {
+                if (message.startsWith("Uncaught")) {
+                    Log.e("WebToApk", "\033[0;31m" + message + " -- From line " + 
+                        consoleMessage.lineNumber() + " of " + consoleMessage.sourceId() + "\033[0m");
+                    return true;
+                }
+
+                // Default console.log handling
+                Log.d("WebToApk", message + " -- From line " + consoleMessage.lineNumber() + " of " + consoleMessage.sourceId());
+            }
+            return true;
+        }
+
+
         @Override
         public boolean onJsAlert(WebView view, String url, String message, final android.webkit.JsResult result) {
             new AlertDialog.Builder(MainActivity.this)
@@ -209,7 +242,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    
+
     /**
      * This allows for a splash screen
      * Hide elements once the page loads
@@ -263,7 +296,6 @@ public class MainActivity extends AppCompatActivity {
             }
 
             if (isInternalLink) {
-                view.loadUrl(url);
                 return false;
             }
 
@@ -282,6 +314,7 @@ public class MainActivity extends AppCompatActivity {
                         .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
                             @Override
                             public void onClick(DialogInterface dialog, int which) {
+                                Log.d("WebToApk", "\033[1;34mExternal link:\033[0m '" + url);
                                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                                 view.getContext().startActivity(intent);
                             }
@@ -290,14 +323,28 @@ public class MainActivity extends AppCompatActivity {
                         .show();
                     return true;
                 } else {
+                    Log.d("WebToApk", "\033[1;34mExternal link:\033[0m '" + url);
                     Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                     view.getContext().startActivity(intent);
                     return true;
                 }
             }
             // Open in WebView
-            view.loadUrl(url);
+            Log.d("WebToApk", "\033[1;34mExternal link:\033[0m '" + url);
             return false;
+        }
+
+        @Nullable
+        @Override
+        public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+            // Log.d("WebToApk","Request: " + request.getUrl());
+            return super.shouldInterceptRequest(view, request);
+        }
+
+        @Override
+        public void onPageStarted(WebView webview, String url, Bitmap favicon) {
+            super.onPageStarted(webview, url, favicon);
+            userScriptManager.injectScripts(webview, url);
         }
 
         // Animation on app open
@@ -305,6 +352,7 @@ public class MainActivity extends AppCompatActivity {
         public void onPageFinished(WebView webview, String url) {
             // Без флага errorOccurred у нас будет видно ошибку webview пока идёт анимация после tryAgain
             if (!errorOccurred) {
+                Log.d("WebToApk","Current page: " + url);
                 spinner.setVisibility(View.GONE);
                 if (!webview.isShown()) {
                     webview.startAnimation(fadeInAnimation);

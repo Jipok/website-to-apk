@@ -64,6 +64,38 @@ For example, if your website is `https://example.com`, set:
 deeplink = example.com
 ```
 
+## Userscripts Support
+
+The app supports userscripts (similar to Tampermonkey/Violentmonkey scripts) through the `scripts` configuration option:
+
+```ini
+scripts = scripts/*.js             # Load all .js files from scripts directory
+# OR
+scripts = site-*.js                # Load all files matching pattern
+# OR
+scripts = script1*.js script20.js  # Load specific script files
+```
+
+### How Userscripts Work
+
+- Scripts are executed early in page load cycle - after `document.body` is available but before `DOMContentLoaded` event fires
+- Scripts can use Tampermonkey/Violentmonkey/etc `@match` directive to specify target URLs
+- If no `@match` is specified, the script will run on all pages
+- Script console output (console.log/alert/warn) can be monitored using:
+```bash
+./make.sh test
+```
+
+Common use cases include:
+- Adding dark mode to websites
+- Customizing website appearance
+- Adding new functionality
+- Fixing mobile compatibility issues
+
+Example of some useful scripts:
+- [dark-mode.js](https://gist.github.com/Jipok/01d12591491816625649a467db898518) - Universal dark theme that respects system preferences
+- [instant.js](https://raw.githubusercontent.com/instantpage/instant.page/refs/heads/master/instantpage.js) - Speed up page loads by preloading pages when the user taps
+
 ## Additional WebView Options
 The following advanced options can also be configured:
 ```toml
@@ -74,6 +106,8 @@ JSCanOpenWindowsAutomatically = true  # Allow JS to open new windows/popups
 DomStorageEnabled = true              # Enable HTML5 DOM storage
 DatabaseEnabled = true                # Enable HTML5 Web SQL Database
 SavePassword = true                   # Allow saving passwords in WebView
+AllowFileAccess = true
+AllowFileAccessFromFileURLs = true
 
 MediaPlaybackRequiresUserGesture = false # Disable autoplay of media files
 ```
