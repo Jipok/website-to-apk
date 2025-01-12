@@ -73,7 +73,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         mainLayout = findViewById(android.R.id.content);
         parentLayout = (ViewGroup) mainLayout.getParent();
-        userScriptManager = new UserScriptManager(this);
+        userScriptManager = new UserScriptManager(this, mainURL);
 
         // Handle intent
         Intent intent = getIntent();
@@ -119,27 +119,34 @@ public class MainActivity extends AppCompatActivity {
         Open HTML5 video in fullscreen
     */        
     private class CustomWebChrome extends WebChromeClient {
+  
         @Override
         public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
-            String message = consoleMessage.message();
-            
-            // Check for userscript 
-            // Ловим любые ANSI-окрашенные сообщения в квадратных скобках
-            if (message.matches("\\033\\[.*?m\\[.*?\\]\\033\\[0m.*")) {
-                Log.d("WebToApk", message);
-            } else {
-                if (message.startsWith("Uncaught")) {
-                    Log.e("WebToApk", "\033[0;31m" + message + " -- From line " + 
-                        consoleMessage.lineNumber() + " of " + consoleMessage.sourceId() + "\033[0m");
-                    return true;
-                }
+            String src = consoleMessage.sourceId();
+            Integer line = consoleMessage.lineNumber();
+            String msg = consoleMessage.message();
 
-                // Default console.log handling
-                Log.d("WebToApk", message + " -- From line " + consoleMessage.lineNumber() + " of " + consoleMessage.sourceId());
+            if (src.startsWith("http://") || src.startsWith("https://")) {
+                src = src.substring(8);
+                Log.e("WebToApk", "[" + src + ":" + line + "] " + msg);
+            } else {
+                // User scripts colorful
+                switch (consoleMessage.messageLevel()) {
+                    case ERROR:
+                        Log.e("WebToApk", "\033[0;31m[" + src + ":" + line  +"] " + msg + "\033[0m");
+                        break;
+                    case WARNING:
+                        Log.w("WebToApk", "\033[1;33m[" + src + ":" +  line +"]\033[0m " + msg);
+                        break;
+                    case LOG:
+                    case DEBUG:
+                    case TIP:
+                        Log.d("WebToApk", "\033[0;34m[" + src + ":" +  line +"]\033[0m " + msg);
+                        break;
+                }
             }
             return true;
         }
-
 
         @Override
         public boolean onJsAlert(WebView view, String url, String message, final android.webkit.JsResult result) {
@@ -347,6 +354,12 @@ public class MainActivity extends AppCompatActivity {
             userScriptManager.injectScripts(webview, url);
         }
 
+        // @Override
+        // public void onPageCommitVisible(WebView webview, String url) {
+        //     super.onPageCommitVisible(webview, url);
+        //     // Вызывается когда страница готова к отрисовке
+        // }
+
         // Animation on app open
         @Override
         public void onPageFinished(WebView webview, String url) {
@@ -370,6 +383,7 @@ public class MainActivity extends AppCompatActivity {
             parentLayout.removeView(mainLayout);
             parentLayout.addView(errorLayout);
         }
+
     }
 
     boolean doubleBackToExitPressedOnce = false;

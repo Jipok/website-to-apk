@@ -43,12 +43,12 @@ public class UserScriptManager {
         }
     }
 
-    public UserScriptManager(Context context) {
+    public UserScriptManager(Context context, String mailURL) {
         this.context = context;
-        loadUserScripts();
+        loadUserScripts(mailURL + "/");
     }
 
-    private void loadUserScripts() {
+    private void loadUserScripts(String mainUrl) {
         try {
             String[] files = context.getAssets().list("userscripts");
             if (files == null) return;
@@ -88,6 +88,8 @@ public class UserScriptManager {
                 // Выводим предупреждение если нет @match
                 if (script.matches.isEmpty()) {
                     Log.d("WebToApk", "\033[1;33mWarning: Script '" + script.name + "' has no @match patterns. It will be applied to all URLs.\033[0m");
+                } else if (!script.matchesUrl(mainUrl)) {
+                    Log.d("WebToApk", "\033[1;33mWarning: Script '" + script.name + "' does not match main URL: " + mainUrl + "\033[0m");
                 }
                 
                 script.code = code.toString();
@@ -102,57 +104,37 @@ public class UserScriptManager {
     }
 
     public void injectScripts(WebView webview, String url) {
+        // Объявляем функцию waitForBody только один раз
+        String waitForBodyFunc = 
+            "if (!window.waitForBody) {\n" +
+            "   window.waitForBody = function() {\n" +
+            "       return new Promise(resolve => {\n" +
+            "           function check() {\n" +
+            "               if (document.body) {\n" +
+            "                   resolve();\n" +
+            "               } else {\n" +
+            "                   requestAnimationFrame(check);\n" +
+            "               }\n" +
+            "           }\n" +
+            "           check();\n" +
+            "       });\n" +
+            "   }\n" +
+            "}";
+        
+        webview.evaluateJavascript(waitForBodyFunc, null);
+    
+        // Используем её для каждого скрипта
         for (UserScript script : userScripts) {
             if (script.matchesUrl(url)) {
-                // Создаем изолированный контекст для каждого скрипта
-                String escapedCode = JSONObject.quote(script.code);
-                String finalJs = 
-                    "(function() {\n" +
-                    "   const scriptName = '" + script.name + "';\n" +
-                    "   const originalConsole = {\n" +
-                    "       log: console.log.bind(console),\n" +
-                    "       error: console.error.bind(console),\n" +
-                    "       warn: console.warn.bind(console)\n" +
-                    "   };\n" +
-                    "   const customConsole = {\n" +
-                    "       log: function(...args) {\n" +
-                    "           originalConsole.log('\033[0;34m[' + scriptName + ']\033[0m', ...args);\n" +
-                    "       },\n" +
-                    "       error: function(...args) {\n" +
-                    "           originalConsole.error('\033[0;31m[' + scriptName + ']\033[0m', ...args);\n" +
-                    "       },\n" +
-                    "       warn: function(...args) {\n" +
-                    "           originalConsole.warn('\033[1;33m[' + scriptName + ']\033[0m', ...args);\n" +
-                    "       }\n" +
-                    "   };\n" +
-                    "   function tryExecuteScript() {\n" +
-                    "       if (document.body) {\n" +
-                    "           try {\n" +
-                    "               try {\n" +
-                    "                   new Function('return ' + " + escapedCode + " + '\\n//# sourceURL=ozon.js');\n" +
-                    "               } catch(syntaxError) {\n" +
-                    "                   customConsole.error('Syntax error:', syntaxError.message);\n" +
-                    "                   return;\n" +
-                    "               }\n" +
-                    "               try {\n" +
-                    "                   (function(console) {\n" +
-                    "                       eval(" + escapedCode + ");\n" +
-                    "                   })(customConsole);\n" +
-                    "               } catch(runtimeError) {\n" +
-                    "                   customConsole.error('Runtime error:', runtimeError);\n" +
-                    "               }\n" +
-                    "           } catch(error) {\n" +
-                    "               customConsole.error('Unknown error:', error.message);\n" +
-                    "           }\n" +
-                    "       } else {\n" +
-                    "           requestAnimationFrame(tryExecuteScript);\n" +
-                    "       }\n" +
-                    "   }\n" +
-                    "   tryExecuteScript();\n" +
-                    "})();";
-
-                webview.evaluateJavascript(finalJs, null);
+                String js = 
+                    "waitForBody().then(() => { " +
+                    "   " + script.code + "\n" +
+                    "});\n" +
+                    "//# sourceURL=" + script.name;
+                    
+                webview.evaluateJavascript(js, null);
             }
         }
     }
+    
 }
