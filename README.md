@@ -81,6 +81,8 @@ scripts = script1*.js script20.js  # Load specific script files
 - Scripts are executed early in page load cycle - after `document.body` is available but before `DOMContentLoaded` event fires
 - Scripts can use Tampermonkey/Violentmonkey/etc `@match` directive to specify target URLs
 - If no `@match` is specified, the script will run on all pages
+- Only `GM_addStyle` supported from Greasemonkey API
+- There are `WebToApk.showShortToast("toast")` method
 - Script console output (console.log/alert/warn) can be monitored using:
 ```bash
 ./make.sh test

@@ -104,32 +104,40 @@ public class UserScriptManager {
     }
 
     public void injectScripts(WebView webview, String url) {
-        // Объявляем функцию waitForBody только один раз
-        String waitForBodyFunc = 
-            "if (!window.waitForBody) {\n" +
-            "   window.waitForBody = function() {\n" +
-            "       return new Promise(resolve => {\n" +
-            "           function check() {\n" +
-            "               if (document.body) {\n" +
-            "                   resolve();\n" +
-            "               } else {\n" +
-            "                   requestAnimationFrame(check);\n" +
-            "               }\n" +
-            "           }\n" +
-            "           check();\n" +
-            "       });\n" +
-            "   }\n" +
-            "}";
+        // Объявляем функцию waitForBody и GM_addStyle только один раз
+        String helperFunctions = 
+        "if (!window.waitForBody) {\n" +
+        "   window.waitForBody = function() {\n" +
+        "       return new Promise(resolve => {\n" +
+        "           function check() {\n" +
+        "               if (document.body) {\n" +
+        "                   resolve();\n" +
+        "               } else {\n" +
+        "                   requestAnimationFrame(check);\n" +
+        "               }\n" +
+        "           }\n" +
+        "           check();\n" +
+        "       });\n" +
+        "   }\n" +
+        "}\n" +
         
-        webview.evaluateJavascript(waitForBodyFunc, null);
+        "if (!window.GM_addStyle) {\n" +
+        "   window.GM_addStyle = function(css) {\n" +
+        "       const style = document.createElement('style');\n" +
+        "       style.textContent = css;\n" +
+        "       document.head.appendChild(style);\n" +
+        "       return style;\n" +
+        "   }\n" +
+        "}";
+
+    webview.evaluateJavascript(helperFunctions, null);
     
         // Используем её для каждого скрипта
         for (UserScript script : userScripts) {
             if (script.matchesUrl(url)) {
                 String js = 
                     "waitForBody().then(() => { " +
-                    "   " + script.code + "\n" +
-                    "});\n" +
+                    script.code + "\n});\n" +
                     "//# sourceURL=" + script.name;
                     
                 webview.evaluateJavascript(js, null);

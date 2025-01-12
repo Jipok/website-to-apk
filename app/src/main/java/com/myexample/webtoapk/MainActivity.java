@@ -34,6 +34,19 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import androidx.annotation.Nullable;
 import java.io.ByteArrayInputStream;
+import android.webkit.JavascriptInterface;
+
+
+// import android.webkit.DownloadListener;
+// import android.util.Base64;
+// import java.io.File;
+// import java.io.FileOutputStream;
+// import android.os.Environment;
+// import android.app.DownloadManager;
+// import static android.content.Context.DOWNLOAD_SERVICE;
+// import android.os.Build;
+// import android.Manifest;
+// import android.content.pm.PackageManager;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -91,6 +104,7 @@ public class MainActivity extends AppCompatActivity {
         spinner = findViewById(R.id.progressBar1);
         webview.setWebViewClient(new CustomWebViewClient());
         webview.setWebChromeClient(new CustomWebChrome());
+        webview.addJavascriptInterface(new WebAppInterface(this), "WebToApk");
 
         WebSettings webSettings = webview.getSettings();
         webSettings.setJavaScriptEnabled(JSEnabled);
@@ -418,4 +432,36 @@ public class MainActivity extends AppCompatActivity {
         errorOccurred = false;
         webview.reload();
     }
+
+    // JS API
+    private class WebAppInterface {
+        private Context context;
+    
+        WebAppInterface(Context context) {
+            this.context = context;
+        }
+
+        @JavascriptInterface
+        public void showShortToast(String message) {
+            Handler mainHandler = new Handler(Looper.getMainLooper());
+            mainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void showLongToast(String message) {
+            Handler mainHandler = new Handler(Looper.getMainLooper());
+            mainHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+    }
+    
 }
