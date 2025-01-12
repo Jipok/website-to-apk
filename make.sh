@@ -123,6 +123,9 @@ apply_config() {
             "deeplink")
                 set_deep_link "$value"
                 ;;
+            "icon")
+                set_icon "$value"
+                ;;
             *)
                 set_var "$key = $value"
                 ;;
@@ -132,6 +135,9 @@ apply_config() {
     # If host was not specified in config, remove deep link host
     if ! grep -q "^ *deeplink" "$config_file"; then
         set_deep_link
+    fi
+    if ! grep -q "^ *icon" "$config_file"; then
+        set_icon
     fi
 }
 
@@ -166,7 +172,10 @@ test() {
     try "adb install app/build/outputs/apk/release/app-release.apk"
     try "adb logcat -c" # clean logs
     try "adb shell am start -n com.$appname.webtoapk/.MainActivity"
-    adb logcat *:I | grep com.$appname.webtoapk
+    echo "=========================="
+    adb logcat | grep -oP "(?<=WebToApk: ).*"
+
+    # adb logcat *:I | grep com.$appname.webtoapk
 
 	# https://stackoverflow.com/questions/29072501/how-to-unlock-android-phone-through-adb
 	# adb shell input keyevent 26 #Pressing the lock button
@@ -280,6 +289,44 @@ set_deep_link() {
         rm "$tmp_file"
     fi
 }
+
+
+set_icon() {
+    local icon_path="$@"
+    local default_icon="./example.png"
+    local dest_file="app/src/main/res/mipmap/ic_launcher.png"
+    
+    # If no icon provided, use default
+    if [ -z "$icon_path" ]; then
+        icon_path="$default_icon"
+    fi
+
+    # Validate icon
+    [ ! -f "$icon_path" ] && error "Icon file not found: $icon_path"
+    
+    # Check if file is PNG
+    file_type=$(file -b --mime-type "$icon_path")
+    if [ "$file_type" != "image/png" ]; then
+        error "Icon must be in PNG format, got: $file_type"
+    fi
+
+    # Create destination directory if needed
+    mkdir -p "$(dirname "$dest_file")"
+    
+    # Check if icon needs to be updated
+    if [ -f "$dest_file" ] && cmp -s "$icon_path" "$dest_file"; then
+        return 0
+    fi
+
+    if [ -z "$@" ]; then
+        warn "Using example.png for icon"
+    fi
+    
+    # Copy icon
+    try "cp \"$icon_path\" \"$dest_file\""
+    log "Icon updated successfully"
+}
+
 
 
 get_tools() {

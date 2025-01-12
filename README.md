@@ -22,6 +22,7 @@ cd website-to-apk
 id = myapp                          # Application ID (will be com.myapp.webtoapk)
 name = My App Name                  # Display name of the app
 mainURL = https://example.com       # Target website URL
+icon = example.png                  # Path to your app icon (PNG format)
 
 allowSubdomains = true              # Allow navigation between example.com and sub.example.com
 requireDoubleBackToExit = true      # Require double back press to exit app
@@ -53,11 +54,6 @@ The final APK will be created in the current directory.
 - `./make.sh apk` - Build signed APK
 - `./make.sh get_tools` - Download Android command-line tools
 - `./make.sh get_java` - Download OpenJDK 17 locally
-
-
-## Custom Icon
-To change the app icon replace file:
-- `app/src/main/res/mipmap/ic_launcher.png`
 
 ## App Links / Deep Links
 
