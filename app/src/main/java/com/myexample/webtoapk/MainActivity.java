@@ -35,6 +35,8 @@ import android.webkit.WebResourceResponse;
 import androidx.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import android.webkit.JavascriptInterface;
+import android.content.Context;
+import android.os.Looper;
 
 
 // import android.webkit.DownloadListener;
@@ -77,6 +79,7 @@ public class MainActivity extends AppCompatActivity {
     boolean SavePassword = true;
     boolean AllowFileAccess = true;
     boolean AllowFileAccessFromFileURLs = true;
+    boolean DebugWebView = false;
 
     boolean GeolocationEnabled = false;
 
@@ -116,12 +119,17 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setSavePassword(SavePassword);
         webSettings.setAllowFileAccess(AllowFileAccess);
         webSettings.setAllowFileAccessFromFileURLs(AllowFileAccessFromFileURLs);
+        webview.setWebContentsDebuggingEnabled(DebugWebView);
 
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         webview.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
 
         CookieManager cookieManager = CookieManager.getInstance();
-        cookieManager.setAcceptCookie(true);
+        if (android.os.Build.VERSION.SDK_INT >= 21) {   
+            CookieManager.getInstance().setAcceptThirdPartyCookies(webview, true);
+        } else {
+                CookieManager.getInstance().setAcceptCookie(true);
+        }
         cookieManager.setCookie(mainURL, cookies);
         cookieManager.flush();
 
@@ -362,17 +370,17 @@ public class MainActivity extends AppCompatActivity {
             return super.shouldInterceptRequest(view, request);
         }
 
-        @Override
-        public void onPageStarted(WebView webview, String url, Bitmap favicon) {
-            super.onPageStarted(webview, url, favicon);
-            userScriptManager.injectScripts(webview, url);
-        }
-
         // @Override
         // public void onPageCommitVisible(WebView webview, String url) {
         //     super.onPageCommitVisible(webview, url);
         //     // Вызывается когда страница готова к отрисовке
         // }
+
+        @Override
+        public void onPageStarted(WebView webview, String url, Bitmap favicon) {
+            super.onPageStarted(webview, url, favicon);
+            userScriptManager.injectScripts(webview, url);
+        }
 
         // Animation on app open
         @Override
