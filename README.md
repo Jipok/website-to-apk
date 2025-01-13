@@ -78,11 +78,10 @@ scripts = script1*.js script20.js  # Load specific script files
 
 ### How Userscripts Work
 
-- Scripts are executed early in page load cycle - after `document.body` is available but before `DOMContentLoaded` event fires
-- Scripts can use Tampermonkey/Violentmonkey/etc `@match` directive to specify target URLs
+- Scripts can use Tampermonkey/Violentmonkey/etc [`@match`](https://violentmonkey.github.io/api/metadata-block/#match--exclude-match) and [`@run-at`](https://violentmonkey.github.io/api/metadata-block/#run-at) directives, other ignored
 - If no `@match` is specified, the script will run on all pages
 - Only `GM_addStyle` supported from Greasemonkey API
-- There are `WebToApk.showShortToast("toast")` method
+- There are `toast("short message")` function
 - Script console output (console.log/alert/warn) can be monitored using:
 ```bash
 ./make.sh test

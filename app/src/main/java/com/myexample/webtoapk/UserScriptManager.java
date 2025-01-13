@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import android.webkit.WebView;
 import android.webkit.ValueCallback;
@@ -24,6 +25,14 @@ public class UserScriptManager {
         String name;
         String code;
         List<String> matches = new ArrayList<>();
+        String runAt = "document-end"; 
+
+        private static final List<String> VALID_RUN_AT = Arrays.asList(
+            "document-start",
+            "document-body", 
+            "document-end",
+            "document-idle"
+        );
 
         boolean matchesUrl(String url) {
             // Если matches пустой - скрипт применяется ко всем URL
@@ -82,6 +91,17 @@ public class UserScriptManager {
                             String match = line.substring(line.indexOf("@match") + 6).trim();
                             script.matches.add(match);
                         }
+                        if (line.trim().startsWith("// @run-at")) {
+                            String runAt = line.substring(line.indexOf("@run-at") + 7).trim();
+                            if (UserScript.VALID_RUN_AT.contains(runAt)) {
+                                script.runAt = runAt;
+                            } else {
+                                Log.d("WebToApk", "\033[1;33mWarning: Script '" + script.name + 
+                                    "' has invalid @run-at value: '" + runAt + 
+                                    "'. Valid values are: " + String.join(", ", UserScript.VALID_RUN_AT) +
+                                    ". Using default 'document-end'.\033[0m");
+                            }
+                        }
                     }
                 }
 
@@ -128,19 +148,51 @@ public class UserScriptManager {
         "       document.head.appendChild(style);\n" +
         "       return style;\n" +
         "   }\n" +
+        "}\n"+
+        
+        "if (!window.toast) {\n" +
+        "   window.toast = function(message) {\n" +
+        "       WebToApk.showShortToast(message);\n" +
+        "   }\n" +
         "}";
+;
 
-    webview.evaluateJavascript(helperFunctions, null);
+        webview.evaluateJavascript(helperFunctions, null);
     
-        // Используем её для каждого скрипта
         for (UserScript script : userScripts) {
             if (script.matchesUrl(url)) {
-                String js = 
-                    "waitForBody().then(() => { " +
-                    script.code + "\n});\n" +
-                    "//# sourceURL=" + script.name;
-                    
-                webview.evaluateJavascript(js, null);
+                String js;
+                switch (script.runAt) {
+                    case "document-start":
+                        js = script.code + "\n//# sourceURL=" + script.name;
+                        webview.evaluateJavascript(js, null);
+                        break;
+                        
+                    case "document-body":
+                        js = "waitForBody().then(() => { " + 
+                                script.code + "\n});\n" +
+                                "//# sourceURL=" + script.name;
+                        webview.evaluateJavascript(js, null);
+                        break;
+                        
+                    case "document-end":
+                        js = "document.addEventListener('DOMContentLoaded', function() { " +
+                                script.code + "\n" +
+                                "});\n" +
+                                "//# sourceURL=" + script.name;
+                        webview.evaluateJavascript(js, null);
+                        break;
+                        
+                    case "document-idle":
+                        js = "document.addEventListener('DOMContentLoaded', function() {" +
+                                "    setTimeout(() => {" + 
+                                "        " + script.code + "\n" +
+                                "    }, 5);\n" +
+                                "});\n" +
+                                "//# sourceURL=" + script.name;
+                        webview.evaluateJavascript(js, null);
+                        break;
+                }
             }
         }
     }
