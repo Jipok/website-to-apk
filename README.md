@@ -1,4 +1,4 @@
-# Website-to-APK Converter
+# Website-to-APK
 
 A simple tool to convert any website into an Android APK without requiring Android Studio or Java programming knowledge. The app acts as a WebView wrapper around your chosen website.
 
@@ -8,6 +8,7 @@ A simple tool to convert any website into an Android APK without requiring Andro
 - Automatic Java 17 downloading option
 - Automated Android SDK tools installation
 - APK signing and building process
+- Userscripts support
 
 ## Quick Start
 
