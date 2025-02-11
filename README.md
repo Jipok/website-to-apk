@@ -47,7 +47,7 @@ The final APK will be created in the current directory.
 
 ## Available Commands
 
-- `./make.sh build` - Apply configuration and build
+- `./make.sh build [config]` - Apply configuration and build
 - `./make.sh keygen` - Generate signing key
 - `./make.sh test` - Install and test APK on connected device
 - `./make.sh clean` - Clean build files

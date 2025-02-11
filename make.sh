@@ -603,7 +603,7 @@ fi
 if [ $# -eq 0 ]; then
     echo -e "${BOLD}Usage:${NC}"
     echo -e "  ${BLUE}$0 keygen${NC}          - Generate signing key"
-    echo -e "  ${BLUE}$0 build${NC}           - Apply configuration and build"
+    echo -e "  ${BLUE}$0 build${NC} [config]  - Apply configuration and build"
     echo -e "  ${BLUE}$0 test${NC}            - Install and test APK via adb"
     echo -e "  ${BLUE}$0 clean${NC}           - Clean build files"
     echo 
