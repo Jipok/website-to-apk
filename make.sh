@@ -555,7 +555,7 @@ check_and_find_java() {
 }
 
 build() {
-    apply_config "$1"
+    apply_config $@
     apk
 }
 
