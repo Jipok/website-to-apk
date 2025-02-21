@@ -521,6 +521,7 @@ check_and_find_java() {
         version=$("$JAVA_HOME/bin/java" -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
         if [ "$version" = "17" ]; then
             info "Using system JAVA_HOME: $JAVA_HOME"
+            export PATH="$JAVA_HOME/bin:$PATH"
             return 0
         else
             warn "Current JAVA_HOME points to wrong version: $version"
