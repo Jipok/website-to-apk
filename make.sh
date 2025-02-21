@@ -133,7 +133,7 @@ apply_config() {
                 set_var "$key = $value"
                 ;;
         esac
-    done < "$config_file"
+    done < <(sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]]\+#.*//' "$config_file")
 
     # If host was not specified in config, remove deep link host
     if ! grep -q "^ *deeplink" "$config_file"; then
