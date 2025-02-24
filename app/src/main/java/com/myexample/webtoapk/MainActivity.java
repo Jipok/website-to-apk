@@ -32,6 +32,7 @@ import android.webkit.ConsoleMessage;
 import android.graphics.Color;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
+import android.webkit.WebResourceError;
 import androidx.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import android.webkit.JavascriptInterface;
@@ -125,11 +126,7 @@ public class MainActivity extends AppCompatActivity {
         webview.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
 
         CookieManager cookieManager = CookieManager.getInstance();
-        if (android.os.Build.VERSION.SDK_INT >= 21) {   
-            CookieManager.getInstance().setAcceptThirdPartyCookies(webview, true);
-        } else {
-                CookieManager.getInstance().setAcceptCookie(true);
-        }
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webview, true);
         cookieManager.setCookie(mainURL, cookies);
         cookieManager.flush();
 
@@ -399,11 +396,39 @@ public class MainActivity extends AppCompatActivity {
 
         // Show custom error page with `tryAgain` button
         @Override
-        public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
-            errorOccurred = true;
-            errorLayout = getLayoutInflater().inflate(R.layout.error, parentLayout, false);
-            parentLayout.removeView(mainLayout);
-            parentLayout.addView(errorLayout);
+        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+            String errorDescription = error.getDescription().toString();
+            int errorCode = error.getErrorCode();
+            
+            if (request.isForMainFrame()) {
+                switch (errorCode) {
+                    case ERROR_AUTHENTICATION:
+                    case ERROR_BAD_URL:
+                    case ERROR_CONNECT:
+                    case ERROR_FAILED_SSL_HANDSHAKE:
+                    case ERROR_FILE:
+                    case ERROR_FILE_NOT_FOUND:
+                    case ERROR_HOST_LOOKUP:
+                    case ERROR_IO:
+                    case ERROR_PROXY_AUTHENTICATION:
+                    case ERROR_TIMEOUT:
+                    case ERROR_TOO_MANY_REQUESTS:
+                    case ERROR_UNKNOWN:
+                    case ERROR_UNSUPPORTED_AUTH_SCHEME:
+                    case ERROR_UNSUPPORTED_SCHEME:
+                        Log.e("WebToApk", "Major error: " + errorCode + " - " + errorDescription + " url: " + request.getUrl());
+                        errorOccurred = true;
+                        errorLayout = getLayoutInflater().inflate(R.layout.error, parentLayout, false);
+                        parentLayout.removeView(mainLayout);
+                        parentLayout.addView(errorLayout);
+                        break;
+                    default:
+                        Log.w("WebToApk", "Minor error: " + errorCode + " - " + errorDescription + " url: " + request.getUrl());
+                        break;
+                }
+            } else {
+                Log.d("WebToApk", "Resource error: " + errorCode + " - " + errorDescription + " url: " + request.getUrl());
+            }
         }
 
     }
