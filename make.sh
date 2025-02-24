@@ -101,7 +101,15 @@ set_var() {
 
 apply_config() {
     local config_file="${1:-webapk.conf}"
+
+    # If config file is not found in project root, try in caller's directory
+    if [ ! -f "$config_file" ] && [ -f "$ORIGINAL_PWD/$config_file" ]; then
+        config_file="$ORIGINAL_PWD/$config_file"
+    fi
+
     [ ! -f "$config_file" ] && error "Config file not found: $config_file"
+
+    export CONFIG_DIR="$(dirname "$config_file")"
 
     info "Using config: $config_file"
     
@@ -307,6 +315,11 @@ set_icon() {
         icon_path="$default_icon"
     fi
 
+    # If icon_path is not absolute, prepend CONFIG_DIR
+    if [ -n "${CONFIG_DIR:-}" ] && [[ "$icon_path" != /* ]]; then
+        icon_path="$CONFIG_DIR/$icon_path"
+    fi
+
     # Validate icon
     [ ! -f "$icon_path" ] && error "Icon file not found: $icon_path"
     
@@ -367,14 +380,20 @@ set_userscripts() {
         done
     done
 
-    # Find files to remove (exist in dest but not in source list)
-    while IFS= read -r -d '' dest_file; do
-        local base_name=$(basename "$dest_file")
-        if ! grep -q -F "$(basename "$dest_file")" "$tmp_list"; then
-            rm "$dest_file"
-            removed+=("$base_name")
+    # Expand all arguments and patterns to file list
+    for pattern in "$@"; do
+        # If CONFIG_DIR is defined and pattern is relative, prepend it
+        if [ -n "${CONFIG_DIR:-}" ] && [[ "$pattern" != /* ]]; then
+            pattern="$CONFIG_DIR/$pattern"
         fi
-    done < <(find "$scripts_dir" -type f -print0)
+        # Handle both direct files and glob patterns
+        for file in $pattern; do
+            if [ -f "$file" ]; then
+                echo "$file" >> "$tmp_list"
+            fi
+        done
+    done
+
 
     # Copy new and changed files
     while IFS= read -r src_file; do
@@ -426,7 +445,7 @@ get_tools() {
     
     case "$(uname -s)" in
         Linux*)     os_type="linux";;
-        Darwin*)    os_type="mac";;
+        # Darwin*)    os_type="mac";;
         *)         error "Unsupported OS";;
     esac
     
@@ -562,6 +581,11 @@ build() {
 
 ###############################################################################
 
+ORIGINAL_PWD="$PWD"
+
+# Change directory to the directory where make.sh resides (project root)
+try cd "$(dirname "$0")"
+
 export ANDROID_HOME=$PWD/cmdline-tools/
 appname=$(grep -Po '(?<=applicationId "com\.)[^.]*' app/build.gradle)
 
@@ -608,7 +632,7 @@ if [ $# -eq 0 ]; then
     echo -e "  ${BLUE}$0 test${NC}            - Install and test APK via adb"
     echo -e "  ${BLUE}$0 clean${NC}           - Clean build files"
     echo 
-	echo -e "  ${BLUE}$0 get_java${NC}        - Download OpenJDK 11 locally"
+	echo -e "  ${BLUE}$0 get_java${NC}        - Download OpenJDK 17 locally"
     echo -e "  ${BLUE}$0 get_tools${NC}       - Download ./cmdline-tools"
     echo -e "  ${BLUE}$0 chid NAME${NC}       - Set application ID name"
     echo -e "  ${BLUE}$0 rename NAME${NC}     - Set display name of the app"
