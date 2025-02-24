@@ -45,6 +45,14 @@ confirmOpenInBrowser = true         # Show confirmation before opening external 
 
 The final APK will be created in the current directory.
 
+### YouTube Example
+
+Pre-configured configuration files for YouTube are available in the <code>confs/youtube</code> directory. To build a YouTube APK, simply execute:
+
+```bash
+./make.sh build confs/youtube/webapk.conf
+```
+
 ## Available Commands
 
 - `./make.sh build [config]` - Apply configuration and build
