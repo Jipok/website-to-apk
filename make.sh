@@ -217,6 +217,18 @@ keygen() {
 clean() {
     info "Cleaning build files..."
     try rm -rf app/build .gradle
+    chid myexample
+    set_deep_link
+    set_icon
+    set_userscripts
+    try git restore app/src/main/java/com/myexample/webtoapk/MainActivity.java
+    try git restore app/src/main/AndroidManifest.xml
+    try git restore app/src/main/res/values/strings.xml
+    try git restore app/src/main/res/values-de/strings.xml
+    try git restore app/src/main/res/values-es/strings.xml
+    try git restore app/src/main/res/values-fr/strings.xml
+    try git restore app/src/main/res/values-ru/strings.xml
+    try git restore app/src/main/res/values-zh/strings.xml
     log "Clean completed"
 }
 
