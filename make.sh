@@ -517,7 +517,7 @@ get_java() {
 # Check Java version and update JAVA_HOME if needed
 check_and_find_java() {
     # First check existing JAVA_HOME
-    if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
         version=$("$JAVA_HOME/bin/java" -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
         if [ "$version" = "17" ]; then
             info "Using system JAVA_HOME: $JAVA_HOME"
