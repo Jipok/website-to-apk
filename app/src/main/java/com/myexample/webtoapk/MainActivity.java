@@ -341,7 +341,7 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                 } else {
-                    Log.d("WebToApk", "Opening external URLs is disabled: " + url);
+                    Log.d("WebToApk", "Opening URLs in external app is disabled: " + url);
                 }
                 return true; // Consume the event so that the WebView does not load this URL
             }

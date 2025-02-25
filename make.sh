@@ -113,7 +113,7 @@ apply_config() {
 
     info "Using config: $config_file"
     
-    while IFS='=' read -r key value; do
+    while IFS='=' read -r key value || [ -n "$key" ]; do
         # Skip empty lines and comments
         [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
         
@@ -218,17 +218,30 @@ clean() {
     info "Cleaning build files..."
     try rm -rf app/build .gradle
     chid myexample
+    rename "My App Name"
     set_deep_link
     set_icon
     set_userscripts
-    try git restore app/src/main/java/com/myexample/webtoapk/MainActivity.java
-    try git restore app/src/main/AndroidManifest.xml
-    try git restore app/src/main/res/values/strings.xml
-    try git restore app/src/main/res/values-de/strings.xml
-    try git restore app/src/main/res/values-es/strings.xml
-    try git restore app/src/main/res/values-fr/strings.xml
-    try git restore app/src/main/res/values-ru/strings.xml
-    try git restore app/src/main/res/values-zh/strings.xml
+    set_var "mainURL = https://github.com/Jipok"
+    set_var "requireDoubleBackToExit = true"
+    set_var "allowSubdomains = true"
+    set_var "enableExternalLinks = true"
+    set_var "openExternalLinksInBrowser = true"
+    set_var "confirmOpenInBrowser = true"
+    set_var "allowOpenMobileApp = false"
+    set_var "confirmOpenExternalApp = true"
+    set_var 'cookies = '
+    set_var "blockLocalhostRequests = true"
+    set_var "JSEnabled = true"
+    set_var "JSCanOpenWindowsAutomatically = true"
+    set_var "DomStorageEnabled = true"
+    set_var "DatabaseEnabled = true"
+    set_var "MediaPlaybackRequiresUserGesture = true"
+    set_var "SavePassword = true"
+    set_var "AllowFileAccess = true"
+    set_var "AllowFileAccessFromFileURLs = true"
+    set_var "DebugWebView = false"
+    set_var "GeolocationEnabled = false"
     log "Clean completed"
 }
 
