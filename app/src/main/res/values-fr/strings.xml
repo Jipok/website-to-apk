@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Mon Application Mignonne</string>
+    <string name="app_name">My App Name</string>
     <string name="error_message">Vérifiez la connexion Internet</string>
     <string name="exit_app">Appuyez à nouveau pour quitter</string>
     <string name="try_again">Réessayer</string>
     <string name="notification_error_ssl_cert_invalid">Erreur SSL ! Permission requise</string>
     <string name="external_link">Lien externe</string>
     <string name="open_in_browser">Ouvrir ce lien dans le navigateur ?</string>
+    <string name="open_in_external_app">Ouvrir ce lien dans une application externe?</string>
 </resources>

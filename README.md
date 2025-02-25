@@ -28,9 +28,11 @@ icon = example.png                  # Path to your app icon (PNG format)
 allowSubdomains = true              # Allow navigation between example.com and sub.example.com
 requireDoubleBackToExit = true      # Require double back press to exit app
 
-enableExternalLinks = true          # Allow/block external links
+enableExternalLinks = true          # Allow external links
 openExternalLinksInBrowser = true   # If allowed: open external links in browser or WebView
 confirmOpenInBrowser = true         # Show confirmation before opening external browser
+
+allowOpenMobileApp = false          # Block external app links/schemes
 ```
 
 3. Generate signing key (only needed once, keep the generated file safe):
@@ -119,7 +121,8 @@ SavePassword = true                   # Allow saving passwords in WebView
 AllowFileAccess = true
 AllowFileAccessFromFileURLs = true
 
-MediaPlaybackRequiresUserGesture = false # Disable autoplay of media files
+confirmOpenExternalApp = true         # Show confirmation before opening external app
+blockLocalhostRequests = true         # Block requests to 127.0.0.1
 ```
 
 ## Technical Details

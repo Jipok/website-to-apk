@@ -37,6 +37,7 @@ import androidx.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import android.webkit.JavascriptInterface;
 import android.content.Context;
+import android.content.ActivityNotFoundException;
 import android.os.Looper;
 
 
@@ -71,12 +72,16 @@ public class MainActivity extends AppCompatActivity {
     boolean openExternalLinksInBrowser = true;
     boolean confirmOpenInBrowser = true;
 
+    boolean allowOpenMobileApp = false;
+    boolean confirmOpenExternalApp = true;
+
     String cookies = "";
+    boolean blockLocalhostRequests = true;
     boolean JSEnabled = true;
     boolean JSCanOpenWindowsAutomatically = true;
     boolean DomStorageEnabled = true;
     boolean DatabaseEnabled = true;
-    boolean MediaPlaybackRequiresUserGesture = false;
+    boolean MediaPlaybackRequiresUserGesture = true;
     boolean SavePassword = true;
     boolean AllowFileAccess = true;
     boolean AllowFileAccessFromFileURLs = true;
@@ -301,15 +306,55 @@ public class MainActivity extends AppCompatActivity {
 
         // Check for external link
         @Override
-        public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            String urlDomain = Uri.parse(url).getHost();
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            String url = request.getUrl().toString();
+
+            // Check for non-standard URL scheme (external app)
+            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                if (allowOpenMobileApp) {
+                    if (confirmOpenExternalApp) {
+                        // Show confirmation dialog before opening external app
+                        new AlertDialog.Builder(view.getContext())
+                            .setTitle(R.string.external_link)
+                            .setMessage(R.string.open_in_external_app)
+                            .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    try {
+                                        // Try to launch an external Intent for the custom scheme
+                                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                                        view.getContext().startActivity(intent);
+                                    } catch (ActivityNotFoundException e) {
+                                        Log.e("WebToApk", "\033[0;31mNo application can handle this URL:\033[0m " + url, e);
+                                    }
+                                }
+                            })
+                            .setNegativeButton(android.R.string.no, null)
+                            .show();
+                    } else {
+                        // Open directly without confirmation
+                        try {
+                            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                            view.getContext().startActivity(intent);
+                        } catch (ActivityNotFoundException e) {
+                            Log.e("WebToApk", "\033[0;31mNo application can handle this URL:\033[0m " + url);
+                        }
+                    }
+                } else {
+                    Log.d("WebToApk", "Opening external URLs is disabled: " + url);
+                }
+                return true; // Consume the event so that the WebView does not load this URL
+            }
+            
+            // Check if the URL is internal by comparing the host/domain
+            String urlDomain = request.getUrl().getHost();
             String mainDomain = Uri.parse(mainURL).getHost();
             
             // Safety check for malformed URLs
             if (urlDomain == null || mainDomain == null) {
                 return handleExternalLink(url, view);
             }
-
+            
             // Check if domains match (including subdomains if enabled)
             boolean isInternalLink;
             if (allowSubdomains) {
@@ -320,11 +365,12 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 isInternalLink = urlDomain.equals(mainDomain);
             }
-
+            
             if (isInternalLink) {
+                // Internal link: let the WebView load it normally
                 return false;
             }
-
+            
             return handleExternalLink(url, view);
         }
 
@@ -360,18 +406,18 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
 
-        @Nullable
         @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            // Log.d("WebToApk","Request: " + request.getUrl());
+            String host = request.getUrl().getHost();
+            
+            if (blockLocalhostRequests && ("127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host) || "::1".equals(host) || "0:0:0:0:0:0:0:1".equals(host))) {
+                Log.d("WebToApk", "Blocked access to localhost resource: " + request.getUrl().toString());
+                // Empty answer
+                return new WebResourceResponse("text/plain", "UTF-8", null);
+            }
+            
             return super.shouldInterceptRequest(view, request);
         }
-
-        // @Override
-        // public void onPageCommitVisible(WebView webview, String url) {
-        //     super.onPageCommitVisible(webview, url);
-        //     // Вызывается когда страница готова к отрисовке
-        // }
 
         @Override
         public void onPageStarted(WebView webview, String url, Bitmap favicon) {
