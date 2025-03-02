@@ -124,6 +124,7 @@ AllowFileAccessFromFileURLs = true
 
 confirmOpenExternalApp = true         # Show confirmation before opening external app
 blockLocalhostRequests = true         # Block requests to 127.0.0.1
+geolocationEnabled     = false        # Block geolocation API
 ```
 
 ## Technical Details

@@ -94,6 +94,10 @@ set_var() {
     if ! diff -q "$java_file" "$tmp_file" >/dev/null; then
         mv "$tmp_file" "$java_file"
         log "Updated $var_name to $new_value"
+        # Special handling for geolocationEnabled
+        if [ "$var_name" = "geolocationEnabled" ]; then
+            update_geolocation_permission ${new_value//\"/}
+        fi
     else
         rm "$tmp_file"
     fi
@@ -242,7 +246,7 @@ clean() {
     set_var "AllowFileAccess = true"
     set_var "AllowFileAccessFromFileURLs = true"
     set_var "DebugWebView = false"
-    set_var "GeolocationEnabled = false"
+    set_var "geolocationEnabled = false"
     log "Clean completed"
 }
 
@@ -464,6 +468,39 @@ set_userscripts() {
     fi
 }
 
+update_geolocation_permission() {
+    local manifest_file="app/src/main/AndroidManifest.xml"
+    local permission='<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />'
+    local enabled="$1"
+
+    local tmp_file=$(mktemp)
+
+    if [ "$enabled" = "true" ]; then
+        # Add permission if not already present
+        if ! grep -q "android.permission.ACCESS_FINE_LOCATION" "$manifest_file"; then
+            awk -v perm="$permission" '
+            {
+                print $0
+                if ($0 ~ /<manifest /) {
+                    print "    " perm
+                }
+            }' "$manifest_file" > "$tmp_file"
+
+            log "Added geolocation permission to AndroidManifest.xml"
+            try mv "$tmp_file" "$manifest_file"
+        fi
+    else
+        # Remove permission if present
+        if grep -q "android.permission.ACCESS_FINE_LOCATION" "$manifest_file"; then
+            grep -v "android.permission.ACCESS_FINE_LOCATION" "$manifest_file" > "$tmp_file"
+
+            log "Removed geolocation permission from AndroidManifest.xml"
+            try mv "$tmp_file" "$manifest_file"
+        else
+            rm "$tmp_file"
+        fi
+    fi
+}
 
 
 get_tools() {

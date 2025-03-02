@@ -39,6 +39,11 @@ import android.webkit.JavascriptInterface;
 import android.content.Context;
 import android.content.ActivityNotFoundException;
 import android.os.Looper;
+import android.webkit.GeolocationPermissions;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 
 // import android.webkit.DownloadListener;
@@ -54,6 +59,7 @@ import android.os.Looper;
 
 
 public class MainActivity extends AppCompatActivity {
+    private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
 
     private WebView webview;
     private UserScriptManager userScriptManager;
@@ -88,7 +94,7 @@ public class MainActivity extends AppCompatActivity {
     boolean AllowFileAccessFromFileURLs = true;
     boolean DebugWebView = false;
 
-    boolean GeolocationEnabled = false;
+    boolean geolocationEnabled = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -119,7 +125,7 @@ public class MainActivity extends AppCompatActivity {
         WebSettings webSettings = webview.getSettings();
         webSettings.setJavaScriptEnabled(JSEnabled);
         webSettings.setJavaScriptCanOpenWindowsAutomatically(JSCanOpenWindowsAutomatically);
-        webSettings.setGeolocationEnabled(GeolocationEnabled);
+        webSettings.setGeolocationEnabled(geolocationEnabled);
         webSettings.setDomStorageEnabled(DomStorageEnabled);
         webSettings.setDatabaseEnabled(DatabaseEnabled);
         webSettings.setMediaPlaybackRequiresUserGesture(MediaPlaybackRequiresUserGesture);
@@ -135,6 +141,11 @@ public class MainActivity extends AppCompatActivity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webview, true);
         cookieManager.setCookie(mainURL, cookies);
         cookieManager.flush();
+
+        // Request geo access only if have `android.permission.ACCESS_FINE_LOCATION`
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+        }
 
         webview.loadUrl(mainURL);
     }
@@ -236,6 +247,14 @@ public class MainActivity extends AppCompatActivity {
                 .show();
             return true;
         }
+
+        @Override
+        public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
+            // Automatically grant permission for geolocation requests
+            callback.invoke(origin, true, false);
+        }
+
+
         //////////////////////
         private View mCustomView;
         private WebChromeClient.CustomViewCallback mCustomViewCallback;
