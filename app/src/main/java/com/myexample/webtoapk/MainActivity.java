@@ -76,6 +76,7 @@ public class MainActivity extends AppCompatActivity {
     boolean confirmOpenExternalApp = true;
 
     String cookies = "";
+    String basicAuth = "";
     boolean blockLocalhostRequests = true;
     boolean JSEnabled = true;
     boolean JSCanOpenWindowsAutomatically = true;
@@ -302,6 +303,69 @@ public class MainActivity extends AppCompatActivity {
             });
             final AlertDialog dialog = builder.create();
             dialog.show();
+        }
+
+        // Handle HTTP Basic Auth
+        @Override
+        public void onReceivedHttpAuthRequest(final WebView view, final android.webkit.HttpAuthHandler handler, String host, String realm) {
+            // If basicAuth is set and valid, try to parse it
+            if (MainActivity.this.basicAuth != null && !MainActivity.this.basicAuth.isEmpty()) {
+                String[] parts = MainActivity.this.basicAuth.split(":", 2); 
+                if (parts.length == 2) {
+                    String login = parts[0];
+                    String password = parts[1];
+
+                    // Get main domain from mainURL to verify the host
+                    String mainDomain = "";
+                    try {
+                        mainDomain = Uri.parse(MainActivity.this.mainURL).getHost();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                    boolean domainIsValid = false;
+                    if (mainDomain != null && !mainDomain.isEmpty() && host != null && !host.isEmpty()) {
+                        if (MainActivity.this.allowSubdomains) {
+                            // Allow if the host ends with mainDomain (covers subdomains)
+                            domainIsValid = host.endsWith(mainDomain) || mainDomain.endsWith(host);
+                        } else {
+                            domainIsValid = host.equals(mainDomain);
+                        }
+                    }
+
+                    if (domainIsValid) {
+                        // Credentials and domain are valid; proceed automatically
+                        handler.proceed(login, password);
+                        return;
+                    }
+                }
+            }
+
+            // Otherwise, show a custom dialog to prompt for credentials
+            // Inflate a custom layout with two EditText fields for username and password
+            final View dialogView = getLayoutInflater().inflate(R.layout.auth_dialog, null);
+            final EditText usernameInput = dialogView.findViewById(R.id.username);
+            final EditText passwordInput = dialogView.findViewById(R.id.password);
+
+            new AlertDialog.Builder(MainActivity.this)
+                .setTitle("Authentication Required")
+                .setView(dialogView)
+                .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        // Retrieve user input and proceed with HTTP authentication
+                        String user = usernameInput.getText().toString();
+                        String pass = passwordInput.getText().toString();
+                        handler.proceed(user, pass);
+                    }
+                })
+                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        handler.cancel();
+                    }
+                })
+                .show();
         }
 
         // Check for external link

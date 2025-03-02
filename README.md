@@ -110,8 +110,9 @@ Example of some useful scripts:
 
 ## Additional WebView Options
 The following advanced options can also be configured:
-```toml
-cookies = "key1=value1; key2=value2"  # Cookies for mainURL
+```ini
+cookies = "key1=value1; key2=value2"  # Cookies for mainURL host
+basicAuth = login:password            # HTTP Basic Auth credentials for mainURL host
 JSEnabled = true                      # Enable JavaScript execution
 JSCanOpenWindowsAutomatically = true  # Allow JS to open new windows/popups
 
