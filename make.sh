@@ -103,6 +103,38 @@ set_var() {
     fi
 }
 
+merge_config_with_default() {
+    local default_conf="app/default.conf"
+    local user_conf="$1"
+    local merged_conf
+    merged_conf=$(mktemp)
+
+    # Temporary file for default lines that are missing in user config
+    local temp_defaults
+    temp_defaults=$(mktemp)
+
+    # For each non-empty, non-comment line in default.conf
+    while IFS= read -r line; do
+        # Extract key (everything up to '=')
+        key=$(echo "$line" | cut -d '=' -f1 | xargs)
+        if [ -n "$key" ]; then
+            # Check if the key is missing in the user config
+            if ! grep -q -E "^[[:space:]]*$key[[:space:]]*=" "$user_conf"; then
+                # Key is missing – add the default line
+                echo "$line" >> "$temp_defaults"
+            fi
+        fi
+    done < <(grep -vE '^[[:space:]]*(#|$)' "$default_conf")
+
+    # Now combine default lines (if any) with the user configuration.
+    # The defaults will be added on top, but since they are defined earlier they
+    # can be overridden by any subsequent assignment (если вдруг порядок имеет значение).
+    cat "$temp_defaults" "$user_conf" > "$merged_conf"
+
+    rm -f "$temp_defaults"
+    echo "$merged_conf"
+}
+
 apply_config() {
     local config_file="${1:-webapk.conf}"
 
@@ -116,6 +148,8 @@ apply_config() {
     export CONFIG_DIR="$(dirname "$config_file")"
 
     info "Using config: $config_file"
+
+    config_file=$(merge_config_with_default "$config_file")
     
     while IFS='=' read -r key value || [ -n "$key" ]; do
         # Skip empty lines and comments
@@ -146,17 +180,6 @@ apply_config() {
                 ;;
         esac
     done < <(sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]]\+#.*//' "$config_file")
-
-    # If host was not specified in config, remove deep link host
-    if ! grep -q "^ *deeplink" "$config_file"; then
-        set_deep_link
-    fi
-    if ! grep -q "^ *icon" "$config_file"; then
-        set_icon
-    fi
-    if ! grep -q "^ *scripts" "$config_file"; then
-        set_userscripts
-    fi
 }
 
 
@@ -221,33 +244,7 @@ keygen() {
 clean() {
     info "Cleaning build files..."
     try rm -rf app/build .gradle
-    chid myexample
-    rename "My App Name"
-    set_deep_link
-    set_icon
-    set_userscripts
-    set_var "mainURL = https://github.com/Jipok"
-    set_var "requireDoubleBackToExit = true"
-    set_var "allowSubdomains = true"
-    set_var "enableExternalLinks = true"
-    set_var "openExternalLinksInBrowser = true"
-    set_var "confirmOpenInBrowser = true"
-    set_var "allowOpenMobileApp = false"
-    set_var "confirmOpenExternalApp = true"
-    set_var 'cookies = '
-    set_var 'basicAuth = '
-    set_var 'userAgent = '
-    set_var "blockLocalhostRequests = true"
-    set_var "JSEnabled = true"
-    set_var "JSCanOpenWindowsAutomatically = true"
-    set_var "DomStorageEnabled = true"
-    set_var "DatabaseEnabled = true"
-    set_var "MediaPlaybackRequiresUserGesture = true"
-    set_var "SavePassword = true"
-    set_var "AllowFileAccess = true"
-    set_var "AllowFileAccessFromFileURLs = true"
-    set_var "DebugWebView = false"
-    set_var "geolocationEnabled = false"
+    apply_config app/default.conf
     log "Clean completed"
 }
 
@@ -338,7 +335,7 @@ set_deep_link() {
 
 set_icon() {
     local icon_path="$@"
-    local default_icon="./example.png"
+    local default_icon="$PWD/app/example.png"
     local dest_file="app/src/main/res/mipmap/ic_launcher.png"
     
     # If no icon provided, use default
@@ -385,7 +382,7 @@ set_userscripts() {
     mkdir -p "$scripts_dir"
     
     # If no arguments provided, clean destination and exit
-    if [ $# -eq 0 ]; then
+    if [ $# -eq 0 ] || [ -z "$1" ]; then
         if [ -n "$(ls -A $scripts_dir 2>/dev/null)" ]; then
             rm -rf "${scripts_dir:?}"/*
             log "Userscripts directory cleared"
