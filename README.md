@@ -113,6 +113,7 @@ The following advanced options can also be configured:
 ```ini
 cookies = "key1=value1; key2=value2"  # Cookies for mainURL host
 basicAuth = login:password            # HTTP Basic Auth credentials for mainURL host
+userAgent = "MyCustomUserAgent/1.0"   # Custom UserAgent header
 JSEnabled = true                      # Enable JavaScript execution
 JSCanOpenWindowsAutomatically = true  # Allow JS to open new windows/popups
 

@@ -236,6 +236,7 @@ clean() {
     set_var "confirmOpenExternalApp = true"
     set_var 'cookies = '
     set_var 'basicAuth = '
+    set_var 'userAgent = '
     set_var "blockLocalhostRequests = true"
     set_var "JSEnabled = true"
     set_var "JSCanOpenWindowsAutomatically = true"

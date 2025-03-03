@@ -83,6 +83,7 @@ public class MainActivity extends AppCompatActivity {
 
     String cookies = "";
     String basicAuth = "";
+    String userAgent = "";
     boolean blockLocalhostRequests = true;
     boolean JSEnabled = true;
     boolean JSCanOpenWindowsAutomatically = true;
@@ -133,6 +134,10 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setAllowFileAccess(AllowFileAccess);
         webSettings.setAllowFileAccessFromFileURLs(AllowFileAccessFromFileURLs);
         webview.setWebContentsDebuggingEnabled(DebugWebView);
+
+        if (!userAgent.isEmpty()) {
+            webSettings.setUserAgentString(userAgent);
+        }
 
         webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         webview.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
