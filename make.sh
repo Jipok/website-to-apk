@@ -536,7 +536,7 @@ get_tools() {
 }
 
 
-reinstall_gradle() {
+regradle() {
     info "Reinstalling Gradle..."
     try rm -rf gradle gradlew .gradle
     try mkdir -p gradle/wrapper
@@ -690,15 +690,13 @@ if [ $# -eq 0 ]; then
     echo -e "${BOLD}Usage:${NC}"
     echo -e "  ${BLUE}$0 keygen${NC}          - Generate signing key"
     echo -e "  ${BLUE}$0 build${NC} [config]  - Apply configuration and build"
-    echo -e "  ${BLUE}$0 test${NC}            - Install and test APK via adb"
-    echo -e "  ${BLUE}$0 clean${NC}           - Clean build files"
+    echo -e "  ${BLUE}$0 test${NC}            - Install and test APK via adb, show logs"
+    echo -e "  ${BLUE}$0 clean${NC}           - Clean build files, reset settings"
     echo 
-	echo -e "  ${BLUE}$0 get_java${NC}        - Download OpenJDK 17 locally"
-    echo -e "  ${BLUE}$0 get_tools${NC}       - Download ./cmdline-tools"
-    echo -e "  ${BLUE}$0 chid NAME${NC}       - Set application ID name"
-    echo -e "  ${BLUE}$0 rename NAME${NC}     - Set display name of the app"
-    echo -e "  ${BLUE}$0 apk${NC}             - Build APK"
+    echo -e "  ${BLUE}$0 apk${NC}             - Build APK without apply_config"
     echo -e "  ${BLUE}$0 apply_config${NC}    - Apply settings from config file"
+	echo -e "  ${BLUE}$0 get_java${NC}        - Download OpenJDK 17 locally"
+    echo -e "  ${BLUE}$0 regradle${NC}        - Reinstall gradle. You don't need it"
     exit 1
 fi
 

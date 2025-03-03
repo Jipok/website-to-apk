@@ -61,9 +61,9 @@ Pre-configured configuration files for YouTube are available in the <code>confs/
 - `./make.sh keygen` - Generate signing key
 - `./make.sh test` - Install and test APK on connected device
 - `./make.sh clean` - Clean build files
+-
+- `./make.sh apk` - Build APK without apply_config
 - `./make.sh apply_config` - Apply settings from configuration file
-- `./make.sh apk` - Build signed APK
-- `./make.sh get_tools` - Download Android command-line tools
 - `./make.sh get_java` - Download OpenJDK 17 locally
 
 ## App Links / Deep Links
