@@ -123,6 +123,7 @@ SavePassword = true                   # Allow saving passwords in WebView
 AllowFileAccess = true
 AllowFileAccessFromFileURLs = true
 
+showDetailsOnErrorScreen = false      # Show connection error details for user
 confirmOpenExternalApp = true         # Show confirmation before opening external app
 blockLocalhostRequests = true         # Block requests to 127.0.0.1
 geolocationEnabled     = false        # Block geolocation API
