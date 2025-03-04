@@ -44,6 +44,7 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import android.widget.TextView;
 
 
 // import android.webkit.DownloadListener;
@@ -93,6 +94,7 @@ public class MainActivity extends AppCompatActivity {
     boolean SavePassword = true;
     boolean AllowFileAccess = true;
     boolean AllowFileAccessFromFileURLs = true;
+    boolean showDetailsOnErrorScreen = false;
     boolean DebugWebView = false;
 
     boolean geolocationEnabled = false;
@@ -555,6 +557,12 @@ public class MainActivity extends AppCompatActivity {
                         errorLayout = getLayoutInflater().inflate(R.layout.error, parentLayout, false);
                         parentLayout.removeView(mainLayout);
                         parentLayout.addView(errorLayout);
+                        if (showDetailsOnErrorScreen) {
+                            TextView errorTextView = errorLayout.findViewById(R.id.errorText);
+                            if (errorTextView != null) {
+                                errorTextView.setText("Error " + errorCode + ":\n" + errorDescription + "\nURL: " + request.getUrl().toString());
+                            }
+                        }
                         break;
                     default:
                         Log.w("WebToApk", "Minor error: " + errorCode + " - " + errorDescription + " url: " + request.getUrl());

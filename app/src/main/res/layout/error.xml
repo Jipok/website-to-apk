@@ -24,4 +24,14 @@
         android:gravity="center"
         android:onClick="tryAgain"
     />
+
+    <TextView
+        android:id="@+id/errorText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="18sp"
+        android:textColor="#FF0000"
+        android:gravity="center"
+        android:layout_marginBottom="20dp"/>
 </LinearLayout>
