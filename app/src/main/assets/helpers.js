@@ -27,3 +27,17 @@ if (!window.toast) {
         WebToApk.showShortToast(message);
     }
 }
+
+if (!navigator.share) {
+    // data: { title, text, url }
+    navigator.share = function(data) {
+        return new Promise(function(resolve, reject) {
+            try {
+                WebToApk.share(data.title || '', data.text  || '',  data.url   || '');
+                resolve();
+            } catch (err) {
+                reject(err);
+            }
+        });
+    }
+}

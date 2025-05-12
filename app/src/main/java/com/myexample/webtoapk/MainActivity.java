@@ -637,6 +637,25 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
         }
+
+        @JavascriptInterface
+        public void share(String title, String text, String url) {
+            Log.d("WebToApk", "Share: " + title + " :: " +  text +" " + url);
+            // Make Intent
+            Intent shareIntent = new Intent(Intent.ACTION_SEND);
+            shareIntent.setType("text/plain");
+            String shareBody = (text != null ? text : "")
+                                + ((url != null && !url.isEmpty()) ? "\n" + url : "");
+            shareIntent.putExtra(Intent.EXTRA_SUBJECT, title);
+            shareIntent.putExtra(Intent.EXTRA_TEXT, shareBody);
+
+            // Show chooser
+            context.startActivity(
+                Intent.createChooser(shareIntent, title == null ? "Share" : title)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            );
+        }
+
     }
     
 }
