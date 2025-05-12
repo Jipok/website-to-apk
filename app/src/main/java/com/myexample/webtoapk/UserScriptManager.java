@@ -123,42 +123,27 @@ public class UserScriptManager {
         }
     }
 
-    public void injectScripts(WebView webview, String url) {
-        // Объявляем функцию waitForBody и GM_addStyle только один раз
-        String helperFunctions = 
-        "if (!window.waitForBody) {\n" +
-        "   window.waitForBody = function() {\n" +
-        "       return new Promise(resolve => {\n" +
-        "           function check() {\n" +
-        "               if (document.body) {\n" +
-        "                   resolve();\n" +
-        "               } else {\n" +
-        "                   requestAnimationFrame(check);\n" +
-        "               }\n" +
-        "           }\n" +
-        "           check();\n" +
-        "       });\n" +
-        "   }\n" +
-        "}\n" +
-        
-        "if (!window.GM_addStyle) {\n" +
-        "   window.GM_addStyle = function(css) {\n" +
-        "       const style = document.createElement('style');\n" +
-        "       style.textContent = css;\n" +
-        "       document.head.appendChild(style);\n" +
-        "       return style;\n" +
-        "   }\n" +
-        "}\n"+
-        
-        "if (!window.toast) {\n" +
-        "   window.toast = function(message) {\n" +
-        "       WebToApk.showShortToast(message);\n" +
-        "   }\n" +
-        "}";
-;
 
-        webview.evaluateJavascript(helperFunctions, null);
-    
+    private String readAssetFile(String assetPath) {
+        try (InputStream input = context.getAssets().open(assetPath);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(input))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line).append("\n");
+            }
+            return sb.toString();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return "";
+        }
+    }
+
+
+    public void injectScripts(WebView webview, String url) {
+        String helpersJs = readAssetFile("helpers.js");
+        webview.evaluateJavascript(helpersJs, null);
+
         for (UserScript script : userScripts) {
             if (script.matchesUrl(url)) {
                 String js;
