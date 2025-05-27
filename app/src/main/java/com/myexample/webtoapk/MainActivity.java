@@ -45,6 +45,11 @@ import android.content.pm.PackageManager;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import android.widget.TextView;
+import android.app.Activity;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient.FileChooserParams;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 
 
 // import android.webkit.DownloadListener;
@@ -70,6 +75,8 @@ public class MainActivity extends AppCompatActivity {
     private View errorLayout;
     private ViewGroup parentLayout;
     private boolean errorOccurred = false; // For WebView after tryAgain
+    private ValueCallback<Uri[]> mFilePathCallback;       // Image upload
+    private ActivityResultLauncher<Intent> fileChooserLauncher; // Image upload
 
     String mainURL = "https://github.com/Jipok";
     boolean requireDoubleBackToExit = true;
@@ -153,6 +160,35 @@ public class MainActivity extends AppCompatActivity {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
         }
+
+        // Image upload support
+        fileChooserLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                Uri[] results = null;
+                
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    Intent intentData = result.getData(); // Переименовали с data на intentData
+                    
+                    // Обработка множественного выбора
+                    if (intentData.getClipData() != null) {
+                        int count = intentData.getClipData().getItemCount();
+                        results = new Uri[count];
+                        for (int i = 0; i < count; i++) {
+                            results[i] = intentData.getClipData().getItemAt(i).getUri();
+                        }
+                    } else if (intentData.getData() != null) {
+                        // Один файл
+                        results = new Uri[]{intentData.getData()};
+                    }
+                }
+                
+                if (mFilePathCallback != null) {
+                    mFilePathCallback.onReceiveValue(results);
+                    mFilePathCallback = null;
+                }
+            }
+        );
 
         webview.loadUrl(mainURL);
     }
@@ -297,6 +333,46 @@ public class MainActivity extends AppCompatActivity {
                     View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
                     View.SYSTEM_UI_FLAG_FULLSCREEN |
                     View.SYSTEM_UI_FLAG_IMMERSIVE);
+        }
+
+        @Override
+        public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+            // Закрываем предыдущий callback если есть
+            if (mFilePathCallback != null) {
+                mFilePathCallback.onReceiveValue(null);
+            }
+            mFilePathCallback = filePathCallback;
+
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("image/*");
+            
+            // Проверяем параметры файлового диалога
+            String[] acceptTypes = fileChooserParams.getAcceptTypes();
+            if (acceptTypes.length > 0 && acceptTypes[0] != null && !acceptTypes[0].isEmpty()) {
+                if (acceptTypes[0].contains("image")) {
+                    intent.setType("image/*");
+                } else {
+                    intent.setType("*/*");
+                }
+            }
+            
+            // Поддержка множественного выбора
+            if (fileChooserParams.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            }
+            
+            Intent chooserIntent = Intent.createChooser(intent, "Выберите файл");
+            
+            try {
+                fileChooserLauncher.launch(chooserIntent);
+            } catch (ActivityNotFoundException e) {
+                mFilePathCallback = null;
+                Toast.makeText(MainActivity.this, "Невозможно открыть файловый менеджер", Toast.LENGTH_LONG).show();
+                return false;
+            }
+            
+            return true;
         }
     }
 
