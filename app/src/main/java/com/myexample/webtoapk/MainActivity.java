@@ -50,18 +50,11 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient.FileChooserParams;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-
-
-// import android.webkit.DownloadListener;
-// import android.util.Base64;
-// import java.io.File;
-// import java.io.FileOutputStream;
-// import android.os.Environment;
-// import android.app.DownloadManager;
-// import static android.content.Context.DOWNLOAD_SERVICE;
-// import android.os.Build;
-// import android.Manifest;
-// import android.content.pm.PackageManager;
+import android.webkit.DownloadListener;
+import android.app.DownloadManager;
+import android.webkit.URLUtil;
+import android.os.Environment;
+import static android.content.Context.DOWNLOAD_SERVICE;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -166,10 +159,10 @@ public class MainActivity extends AppCompatActivity {
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
                 Uri[] results = null;
-                
+
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
                     Intent intentData = result.getData(); // Переименовали с data на intentData
-                    
+
                     // Обработка множественного выбора
                     if (intentData.getClipData() != null) {
                         int count = intentData.getClipData().getItemCount();
@@ -182,7 +175,7 @@ public class MainActivity extends AppCompatActivity {
                         results = new Uri[]{intentData.getData()};
                     }
                 }
-                
+
                 if (mFilePathCallback != null) {
                     mFilePathCallback.onReceiveValue(results);
                     mFilePathCallback = null;
@@ -190,15 +183,50 @@ public class MainActivity extends AppCompatActivity {
             }
         );
 
+        // File downloading support
+        webview.setDownloadListener(new DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+                DownloadManager downloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+
+                // Create a request for the download
+                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+                request.setMimeType(mimetype);
+
+                // Set cookies for the download request, it's important for authorized downloads
+                String cookies = CookieManager.getInstance().getCookie(url);
+                request.addRequestHeader("cookie", cookies);
+                request.addRequestHeader("User-Agent", userAgent);
+
+                // Set download description and title using string resources
+                request.setDescription(getString(R.string.download_description)); // Use string resource
+                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimetype));
+
+                // Show notification during and after download
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+
+                // Set the destination directory for the downloaded file
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimetype));
+
+                try {
+                    downloadManager.enqueue(request);
+                    Toast.makeText(getApplicationContext(), R.string.download_started, Toast.LENGTH_LONG).show();
+                } catch (Exception e) {
+                    Toast.makeText(getApplicationContext(), R.string.download_failed, Toast.LENGTH_LONG).show();
+                    Log.e("WebToApk", "Failed to start download", e);
+                }
+            }
+        });
+
         webview.loadUrl(mainURL);
     }
 
     /* This allows:
         Remove "Confirm URL" title from js log/alert/dialog/confirm
         Open HTML5 video in fullscreen
-    */        
+    */
     private class CustomWebChrome extends WebChromeClient {
-  
+
         @Override
         public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
             String src = consoleMessage.sourceId();
@@ -269,7 +297,7 @@ public class MainActivity extends AppCompatActivity {
         public boolean onJsPrompt(WebView view, String url, String message, String defaultValue, final JsPromptResult result) {
             final EditText input = new EditText(MainActivity.this);
             input.setText(defaultValue);
-            
+
             new AlertDialog.Builder(MainActivity.this)
                 .setMessage(message)
                 .setView(input)
@@ -324,8 +352,8 @@ public class MainActivity extends AppCompatActivity {
             mOriginalSystemUiVisibility = getWindow().getDecorView().getSystemUiVisibility();
             mOriginalOrientation = getRequestedOrientation();
             mCustomViewCallback = callback;
-            ((FrameLayout)getWindow().getDecorView()).addView(mCustomView, 
-                new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 
+            ((FrameLayout)getWindow().getDecorView()).addView(mCustomView,
+                new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT));
             getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
@@ -346,7 +374,7 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("image/*");
-            
+
             // Проверяем параметры файлового диалога
             String[] acceptTypes = fileChooserParams.getAcceptTypes();
             if (acceptTypes.length > 0 && acceptTypes[0] != null && !acceptTypes[0].isEmpty()) {
@@ -356,14 +384,14 @@ public class MainActivity extends AppCompatActivity {
                     intent.setType("*/*");
                 }
             }
-            
+
             // Поддержка множественного выбора
             if (fileChooserParams.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
                 intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             }
-            
+
             Intent chooserIntent = Intent.createChooser(intent, "Выберите файл");
-            
+
             try {
                 fileChooserLauncher.launch(chooserIntent);
             } catch (ActivityNotFoundException e) {
@@ -371,7 +399,7 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, "Невозможно открыть файловый менеджер", Toast.LENGTH_LONG).show();
                 return false;
             }
-            
+
             return true;
         }
     }
@@ -412,7 +440,7 @@ public class MainActivity extends AppCompatActivity {
         public void onReceivedHttpAuthRequest(final WebView view, final android.webkit.HttpAuthHandler handler, String host, String realm) {
             // If basicAuth is set and valid, try to parse it
             if (MainActivity.this.basicAuth != null && !MainActivity.this.basicAuth.isEmpty()) {
-                String[] parts = MainActivity.this.basicAuth.split(":", 2); 
+                String[] parts = MainActivity.this.basicAuth.split(":", 2);
                 if (parts.length == 2) {
                     String login = parts[0];
                     String password = parts[1];
@@ -511,16 +539,16 @@ public class MainActivity extends AppCompatActivity {
                 }
                 return true; // Consume the event so that the WebView does not load this URL
             }
-            
+
             // Check if the URL is internal by comparing the host/domain
             String urlDomain = request.getUrl().getHost();
             String mainDomain = Uri.parse(mainURL).getHost();
-            
+
             // Safety check for malformed URLs
             if (urlDomain == null || mainDomain == null) {
                 return handleExternalLink(url, view);
             }
-            
+
             // Check if domains match (including subdomains if enabled)
             boolean isInternalLink;
             if (allowSubdomains) {
@@ -531,12 +559,12 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 isInternalLink = urlDomain.equals(mainDomain);
             }
-            
+
             if (isInternalLink) {
                 // Internal link: let the WebView load it normally
                 return false;
             }
-            
+
             return handleExternalLink(url, view);
         }
 
@@ -575,13 +603,13 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             String host = request.getUrl().getHost();
-            
+
             if (blockLocalhostRequests && ("127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host) || "::1".equals(host) || "0:0:0:0:0:0:0:1".equals(host))) {
                 Log.d("WebToApk", "Blocked access to localhost resource: " + request.getUrl().toString());
                 // Empty answer
                 return new WebResourceResponse("text/plain", "UTF-8", null);
             }
-            
+
             return super.shouldInterceptRequest(view, request);
         }
 
@@ -611,7 +639,7 @@ public class MainActivity extends AppCompatActivity {
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             String errorDescription = error.getDescription().toString();
             int errorCode = error.getErrorCode();
-            
+
             if (request.isForMainFrame()) {
                 switch (errorCode) {
                     case ERROR_AUTHENTICATION:
@@ -678,7 +706,7 @@ public class MainActivity extends AppCompatActivity {
     public void tryAgain(View v) {
         parentLayout.removeView(errorLayout);
         parentLayout.addView(mainLayout);
-        webview.setVisibility(View.GONE); 
+        webview.setVisibility(View.GONE);
         spinner.setVisibility(View.VISIBLE);
         errorOccurred = false;
         webview.reload();
@@ -687,7 +715,7 @@ public class MainActivity extends AppCompatActivity {
     // JS API
     private class WebAppInterface {
         private Context context;
-    
+
         WebAppInterface(Context context) {
             this.context = context;
         }
@@ -733,5 +761,5 @@ public class MainActivity extends AppCompatActivity {
         }
 
     }
-    
+
 }

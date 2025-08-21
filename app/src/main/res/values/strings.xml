@@ -7,4 +7,7 @@
     <string name="external_link">External Link</string>
     <string name="open_in_browser">Open this link in browser?</string>
     <string name="open_in_external_app">Open this link in external app?</string>
+    <string name="download_description">Downloading file…</string>
+    <string name="download_started">Download started…</string>
+    <string name="download_failed">Failed to start download.</string>
 </resources>

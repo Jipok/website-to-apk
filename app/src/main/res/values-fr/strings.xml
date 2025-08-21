@@ -8,4 +8,7 @@
     <string name="external_link">Lien externe</string>
     <string name="open_in_browser">Ouvrir ce lien dans le navigateur ?</string>
     <string name="open_in_external_app">Ouvrir ce lien dans une application externe?</string>
+    <string name="download_description">Téléchargement du fichier…</string>
+    <string name="download_started">Téléchargement commencé…</string>
+    <string name="download_failed">Échec du démarrage du téléchargement.</string>
 </resources>
