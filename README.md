@@ -126,6 +126,7 @@ AllowFileAccessFromFileURLs = true
 showDetailsOnErrorScreen = false      # Show connection error details for user
 confirmOpenExternalApp = true         # Show confirmation before opening external app
 blockLocalhostRequests = true         # Block requests to 127.0.0.1
+trustUserCA = false                   # Allow app to trust user-installed SSL certs
 geolocationEnabled     = false        # Block geolocation API
 ```
 

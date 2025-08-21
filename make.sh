@@ -169,6 +169,9 @@ apply_config() {
             "deeplink")
                 set_deep_link "$value"
                 ;;
+            "trustUserCA")
+                set_network_security_config "$value"
+                ;;
             "icon")
                 set_icon "$value"
                 ;;
@@ -329,6 +332,38 @@ set_deep_link() {
         try mv "$tmp_file" "$manifest_file"
     else
         rm "$tmp_file"
+    fi
+}
+
+set_network_security_config() {
+    local manifest_file="app/src/main/AndroidManifest.xml"
+    local config_attr='android:networkSecurityConfig="@xml/network_security_config"'
+    local enabled="$1"
+
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    if [ "$enabled" = "true" ]; then
+        # Add config to the <application> tag if not present
+        if ! grep -q "networkSecurityConfig" "$manifest_file"; then
+            awk -v attr=" $config_attr" '
+            /<application/ { sub(/>$/, attr ">") }
+            { print }' "$manifest_file" > "$tmp_file"
+
+            log "Enabling user CA support in AndroidManifest.xml"
+            try mv "$tmp_file" "$manifest_file"
+        else
+             rm "$tmp_file"
+        fi
+    else
+        # Remove config from the <application> tag if present
+        if grep -q "networkSecurityConfig" "$manifest_file"; then
+            sed "s/ ${config_attr}//" "$manifest_file" > "$tmp_file"
+            log "Disabling user CA support in AndroidManifest.xml"
+            try mv "$tmp_file" "$manifest_file"
+        else
+            rm "$tmp_file"
+        fi
     fi
 }
 
