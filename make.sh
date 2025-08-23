@@ -347,22 +347,27 @@ set_network_security_config() {
         # Add config to the <application> tag if not present
         if ! grep -q "networkSecurityConfig" "$manifest_file"; then
             awk -v attr=" $config_attr" '
-            /<application/ { sub(/>$/, attr ">") }
-            { print }' "$manifest_file" > "$tmp_file"
+            /<\s*application/ { in_app_tag = 1 }
+            in_app_tag && />/ {
+                sub(/>/, attr ">")
+                in_app_tag = 0
+            }
+            { print }
+            ' "$manifest_file" > "$tmp_file"
 
             log "Enabling user CA support in AndroidManifest.xml"
             try mv "$tmp_file" "$manifest_file"
         else
-             rm "$tmp_file"
+             rm -f "$tmp_file"
         fi
     else
         # Remove config from the <application> tag if present
         if grep -q "networkSecurityConfig" "$manifest_file"; then
-            sed "s/ ${config_attr}//" "$manifest_file" > "$tmp_file"
+            sed "s# ${config_attr}##" "$manifest_file" > "$tmp_file"
             log "Disabling user CA support in AndroidManifest.xml"
             try mv "$tmp_file" "$manifest_file"
         else
-            rm "$tmp_file"
+            rm -f "$tmp_file"
         fi
     fi
 }
