@@ -176,7 +176,7 @@ apply_config() {
                 set_icon "$value"
                 ;;
             "scripts")
-                set_userscripts "$value"
+                set_userscripts $value
                 ;;
             *)
                 set_var "$key = $value"
@@ -468,7 +468,7 @@ set_userscripts() {
     # If no arguments provided, clean destination and exit
     if [ $# -eq 0 ] || [ -z "$1" ]; then
         if [ -n "$(ls -A $scripts_dir 2>/dev/null)" ]; then
-            rm -rf "${scripts_dir:?}"/*
+            find "$scripts_dir" -mindepth 1 -delete
             log "Userscripts directory cleared"
         fi
         return 0
@@ -479,38 +479,41 @@ set_userscripts() {
     local updated=()
     local removed=()
     
-    # Create temporary list of source files
-    local tmp_list=$(mktemp)
-    
-    for pattern in "$@"; do
-        # Handle both direct files and glob patterns
-        for file in $pattern; do
-            if [ -f "$file" ]; then
-                echo "$file" >> "$tmp_list"
-            fi
-        done
-    done
+    # Get a list of currently existing script basenames in the destination
+    local existing_scripts=()
+    # Use find to properly handle filenames with spaces
+    while IFS= read -r file; do
+        existing_scripts+=("$(basename "$file")")
+    done < <(find "$scripts_dir" -mindepth 1 -type f)
 
-    # Expand all arguments and patterns to file list
+    # Build a list of all source files from arguments
+    local source_files=()
     for pattern in "$@"; do
         # If CONFIG_DIR is defined and pattern is relative, prepend it
         if [ -n "${CONFIG_DIR:-}" ] && [[ "$pattern" != /* ]]; then
             pattern="$CONFIG_DIR/$pattern"
         fi
-        # Handle both direct files and glob patterns
+
+        # Use a nullglob to avoid errors if a pattern doesn't match any files
+        shopt -s nullglob
         for file in $pattern; do
             if [ -f "$file" ]; then
-                echo "$file" >> "$tmp_list"
+                source_files+=("$file")
             fi
         done
+        shopt -u nullglob # Revert glob option
     done
 
-
-    # Copy new and changed files
-    while IFS= read -r src_file; do
-        local base_name=$(basename "$src_file")
+    # Process source files: copy new/updated files and track which scripts should exist
+    local current_scripts=()
+    for src_file in "${source_files[@]}"; do
+        local base_name
+        base_name=$(basename "$src_file")
         local dest_file="$scripts_dir/$base_name"
         
+        # Add basename to a list of scripts that are currently in config
+        current_scripts+=("$base_name")
+
         if [ ! -f "$dest_file" ]; then
             # New file
             cp "$src_file" "$dest_file"
@@ -520,11 +523,25 @@ set_userscripts() {
             cp "$src_file" "$dest_file"
             updated+=("$base_name")
         fi
-    done < "$tmp_list"
+    done
 
-    rm -f "$tmp_list"
+    # Determine which scripts to remove by comparing old and new lists
+    for script in "${existing_scripts[@]}"; do
+        is_current=false
+        for current in "${current_scripts[@]}"; do
+            if [[ "$script" == "$current" ]]; then
+                is_current=true
+                break
+            fi
+        done
+        # If a script existed before but is not in the new list, remove it
+        if ! $is_current; then
+            rm -f "$scripts_dir/$script"
+            removed+=("$script")
+        fi
+    done
 
-    # Report changes only if there were any
+    # Report all changes
     if [ ${#removed[@]} -gt 0 ]; then
         for script in "${removed[@]}"; do
             log "Removed userscript: $script"
@@ -548,6 +565,7 @@ set_userscripts() {
         return 0
     fi
 }
+
 
 update_geolocation_permission() {
     local manifest_file="app/src/main/AndroidManifest.xml"
