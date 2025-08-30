@@ -308,26 +308,70 @@ rename() {
 set_deep_link() {
     local manifest_file="app/src/main/AndroidManifest.xml"
     local host="$@"
-    
-    local tmp_file=$(mktemp)
-    
-    if [ -z "$host" ]; then
-        # Remove
-        awk '!/android:host=/' "$manifest_file" > "$tmp_file"
-    else
-        # Add or update
-        awk -v host="$host" '
-        /android:host=/           { next }
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    # First, create a version of the manifest without any VIEW/BROWSER intent-filter.
+    # This prepares a clean slate.
+    awk '
+        # Find any intent-filter block
+        /<intent-filter>/, /<\/intent-filter>/ {
+            # Buffer the lines of the block
+            buffer = buffer $0 ORS
+            # When the block ends...
+            if (/<\/intent-filter>/) {
+                # ...check if it is NOT the browser/deeplink one (by looking for action.VIEW).
+                if (buffer !~ /android.intent.action.VIEW/) {
+                    # If it is the LAUNCHER filter, print it.
+                    printf "%s", buffer
+                }
+                # Reset buffer for the next potential block.
+                buffer = ""
+            }
+            # Do not print the line yet.
+            next
+        }
+        # Print all other lines that are not in a VIEW intent-filter block.
         { print }
-        /android:scheme="https"/  { print "                <data android:host=\""host"\" />"; next }
-        ' "$manifest_file" > "$tmp_file"
+    ' "$manifest_file" > "$tmp_file"
+
+    # If a host was provided, add the complete intent-filter block back in.
+    if [ -n "$host" ]; then
+        local new_tmp_file
+        new_tmp_file=$(mktemp)
+        # Use awk to insert the new block after the main launcher intent-filter.
+        awk -v host="$host" '
+            # After the first (launcher) intent-filter is closed...
+            /<\/intent-filter>/ && !inserted {
+                # ...print the closing tag first.
+                print
+                # Then print the new block for our deeplink.
+                print "            <intent-filter>"
+                print "                <action android:name=\"android.intent.action.VIEW\" />"
+                print "                <category android:name=\"android.intent.category.DEFAULT\" />"
+                print "                <category android:name=\"android.intent.category.BROWSABLE\" />"
+                print "                <data android:scheme=\"http\" />"
+                print "                <data android:scheme=\"https\" />"
+                print "                <data android:host=\""host"\" />"
+                print "            </intent-filter>"
+                # Set a flag to ensure we only do this once.
+                inserted=1
+                next
+            }
+            # Print all other lines as usual.
+            { print }
+        ' "$tmp_file" > "$new_tmp_file"
+
+        # The final content is now in new_tmp_file.
+        mv "$new_tmp_file" "$tmp_file"
     fi
-    
+
+    # Apply changes only if the file is actually different.
     if ! diff -q "$manifest_file" "$tmp_file" >/dev/null; then
         if [ -z "$host" ]; then
-            log "Removing deep link host configuration"
+            log "Removing deeplink"
         else
-            log "Setting deep link host to: $host"
+            log "Setting deeplink host to: $host"
         fi
         try mv "$tmp_file" "$manifest_file"
     else
@@ -438,7 +482,6 @@ set_userscripts() {
     # Create temporary list of source files
     local tmp_list=$(mktemp)
     
-    # Expand all arguments and patterns to file list
     for pattern in "$@"; do
         # Handle both direct files and glob patterns
         for file in $pattern; do
