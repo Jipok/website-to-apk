@@ -95,6 +95,7 @@ public class MainActivity extends AppCompatActivity {
     boolean AllowFileAccess = true;
     boolean AllowFileAccessFromFileURLs = true;
     boolean showDetailsOnErrorScreen = false;
+    boolean forceLandscapeMode = false;
     boolean DebugWebView = false;
 
     boolean geolocationEnabled = false;
@@ -102,6 +103,11 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        if (forceLandscapeMode) {
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        }
+
         setContentView(R.layout.activity_main);
         mainLayout = findViewById(android.R.id.content);
         parentLayout = (ViewGroup) mainLayout.getParent();
