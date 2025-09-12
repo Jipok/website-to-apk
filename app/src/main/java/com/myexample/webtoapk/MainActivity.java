@@ -55,10 +55,19 @@ import android.app.DownloadManager;
 import android.webkit.URLUtil;
 import android.os.Environment;
 import static android.content.Context.DOWNLOAD_SERVICE;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.os.Build;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 
 
 public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
+    private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 2;
+    private static final String NOTIFICATION_CHANNEL_ID = "web_app_notifications";
+    private static final String NOTIFICATION_CHANNEL_NAME = "Web App Notifications";
 
     private WebView webview;
     private UserScriptManager userScriptManager;
@@ -103,6 +112,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Create the NotificationChannel, but only on API 26+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            int importance = NotificationManager.IMPORTANCE_DEFAULT;
+            NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, importance);
+            channel.setDescription("Channel for web app notifications");
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+            Log.d("WebToApk", "Notification channel created.");
+        }
 
         if (forceLandscapeMode) {
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
@@ -746,6 +765,62 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(context, message, Toast.LENGTH_LONG).show();
                 }
             });
+        }
+
+        @JavascriptInterface
+        public boolean hasNotificationPermission() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+            }
+            // On older versions, permission is implicitly granted at install time.
+            return true;
+        }
+
+        @JavascriptInterface
+        public void requestNotificationPermission() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // We need to run this on the main thread
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        ActivityCompat.requestPermissions((Activity) context, new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST_CODE);
+                        Log.d("WebToApk", "Requesting notification permission.");
+                    } else {
+                        Log.d("WebToApk", "Notification permission already granted.");
+                    }
+                });
+            }
+        }
+
+        @JavascriptInterface
+        public void showNotification(String title, String message) {
+            // This check is crucial for Android 13+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    Log.w("WebToApk", "Notification permission not granted. Cannot show notification.");
+                    // Optionally, inform the user via a Toast that permission is needed.
+                    new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(context, "Notification permission is required", Toast.LENGTH_LONG).show());
+                    return;
+                }
+            }
+
+            // Create an intent to open the app when the notification is tapped
+            Intent intent = new Intent(context, MainActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher) // Use a default launcher icon
+                .setContentTitle(title)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentIntent(pendingIntent) // Set the intent that will fire when the user taps the notification
+                .setAutoCancel(true); // Automatically removes the notification when the user taps it
+
+            NotificationManagerCompat notificationManager = NotificationManagerCompat.from(context);
+
+            // Using system time is a simple way to get a unique ID for each notification
+            notificationManager.notify((int) System.currentTimeMillis(), builder.build());
+            Log.d("WebToApk", "Showing notification: " + title);
         }
 
         @JavascriptInterface
