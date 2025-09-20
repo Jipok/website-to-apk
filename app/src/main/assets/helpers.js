@@ -13,6 +13,17 @@ if (!window.waitForBody) {
     }
 }
 
+if (!window.runAtDocumentEnd) {
+    // It handles the race condition where the script is injected after the DOMContentLoaded event has already fired.
+    window.runAtDocumentEnd = function(callback) {
+        if (document.readyState === 'interactive' || document.readyState === 'complete') {
+            callback();
+        } else {
+            document.addEventListener('DOMContentLoaded', callback);
+        }
+    }
+}
+
 if (!window.GM_addStyle) {
     window.GM_addStyle = function(css) {
         const style = document.createElement('style');

@@ -161,7 +161,7 @@ public class UserScriptManager {
                         break;
                         
                     case "document-end":
-                        js = "document.addEventListener('DOMContentLoaded', function() { " +
+                        js = "runAtDocumentEnd(function() { " +
                                 script.code + "\n" +
                                 "});\n" +
                                 "//# sourceURL=" + script.name;
@@ -169,7 +169,7 @@ public class UserScriptManager {
                         break;
                         
                     case "document-idle":
-                        js = "document.addEventListener('DOMContentLoaded', function() {" +
+                        js = "runAtDocumentEnd(function() {" +
                                 "    setTimeout(() => {" + 
                                 "        " + script.code + "\n" +
                                 "    }, 5);\n" +

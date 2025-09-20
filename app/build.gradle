@@ -37,12 +37,6 @@ android {
         abortOnError false
     }
 
-    buildTypes {
-        release {
-            minifyEnabled true
-        }
-    }
-
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
