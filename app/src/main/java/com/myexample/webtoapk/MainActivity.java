@@ -303,7 +303,13 @@ public class MainActivity extends AppCompatActivity {
             registerReceiver(unifiedPushEndpointReceiver, new IntentFilter("com.myexample.webtoapk.NEW_ENDPOINT"));
         }
 
-        webview.loadUrl(mainURL);
+        if (savedInstanceState != null) {
+            // Restore the state of the WebView from the saved bundle.
+            webview.restoreState(savedInstanceState);
+        } else {
+            // It's a fresh launch. Load the main URL.
+            webview.loadUrl(mainURL);
+        }
     }
 
     private void registerForUnifiedPush(final String vapidPublicKey) {
@@ -346,13 +352,19 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // Add onDestroy to unregister the receiver and prevent memory leaks
     @Override
     protected void onDestroy() {
         super.onDestroy();
         if (unifiedPushEndpointReceiver != null) {
             unregisterReceiver(unifiedPushEndpointReceiver);
         }
+    }
+
+    // Save the state of the WebView (current URL, history, scroll position) during OOM kill
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        webview.saveState(outState);
     }
 
     /* This allows:
