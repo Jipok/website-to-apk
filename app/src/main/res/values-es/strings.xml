@@ -11,4 +11,7 @@
     <string name="download_description">Descargando archivo…</string>
     <string name="download_started">Descarga iniciada…</string>
     <string name="download_failed">No se pudo iniciar la descarga.</string>
+    <string name="push_distributor_required_title">Se requiere una aplicación de notificaciones</string>
+    <string name="push_distributor_required_message">Se necesita una aplicación de distribución compatible (p. ej., gCompat UP) para recibir notificaciones push. Por favor, instale una y vuelva a intentarlo.</string>
+    <string name="learn_more">Más información</string>
 </resources>

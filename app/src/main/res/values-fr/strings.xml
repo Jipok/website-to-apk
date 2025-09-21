@@ -11,4 +11,7 @@
     <string name="download_description">Téléchargement du fichier…</string>
     <string name="download_started">Téléchargement commencé…</string>
     <string name="download_failed">Échec du démarrage du téléchargement.</string>
+    <string name="push_distributor_required_title">Application de notification requise</string>
+    <string name="push_distributor_required_message">Une application de distribution compatible (par ex. gCompat UP) est nécessaire pour recevoir les notifications push. Veuillez en installer une et réessayer.</string>
+    <string name="learn_more">En savoir plus</string>
 </resources>

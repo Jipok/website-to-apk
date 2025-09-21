@@ -11,4 +11,7 @@
     <string name="download_description">Загрузка файла…</string>
     <string name="download_started">Загрузка началась…</string>
     <string name="download_failed">Не удалось начать загрузку.</string>
+    <string name="push_distributor_required_title">Требуется приложение для уведомлений</string>
+    <string name="push_distributor_required_message">Для получения push-уведомлений требуется совместимое приложение-дистрибьютор (например, gCompat UP). Установите его и попробуйте снова.</string>
+    <string name="learn_more">Узнать больше</string>
 </resources>

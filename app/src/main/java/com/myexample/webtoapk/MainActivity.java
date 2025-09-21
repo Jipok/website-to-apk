@@ -61,7 +61,15 @@ import android.app.PendingIntent;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
-
+import org.unifiedpush.android.connector.UnifiedPush;
+import static org.unifiedpush.android.connector.ConstantsKt.INSTANCE_DEFAULT;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import kotlin.Unit;
+import kotlin.jvm.functions.Function1;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
@@ -79,6 +87,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean errorOccurred = false; // For WebView after tryAgain
     private ValueCallback<Uri[]> mFilePathCallback;       // Image upload
     private ActivityResultLauncher<Intent> fileChooserLauncher; // Image upload
+    private WebAppInterface webAppInterface;
+    private BroadcastReceiver unifiedPushEndpointReceiver;
 
     String mainURL = "https://github.com/Jipok";
     boolean requireDoubleBackToExit = true;
@@ -148,7 +158,8 @@ public class MainActivity extends AppCompatActivity {
         spinner = findViewById(R.id.progressBar1);
         webview.setWebViewClient(new CustomWebViewClient());
         webview.setWebChromeClient(new CustomWebChrome());
-        webview.addJavascriptInterface(new WebAppInterface(this), "WebToApk");
+        webAppInterface = new WebAppInterface(this);
+        webview.addJavascriptInterface(webAppInterface, "WebToApk");
 
         WebSettings webSettings = webview.getSettings();
         webSettings.setJavaScriptEnabled(JSEnabled);
@@ -243,7 +254,105 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+
+        // Broadcast receiver to get the endpoint from the PushServiceImpl
+        unifiedPushEndpointReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                // Now we receive all parts of the subscription
+                String endpoint = intent.getStringExtra("endpoint");
+                String p256dh = intent.getStringExtra("p256dh");
+                String auth = intent.getStringExtra("auth");
+
+                Log.d("WebToApk", "Received new UnifiedPush data. Endpoint: " + endpoint);
+
+                // Instead of a simple function call, we now create the full subscription JSON
+                // and pass it to a special function in our shim that will resolve the 'subscribe()' promise.
+                if (endpoint != null && p256dh != null && auth != null && webview != null) {
+                    try {
+                        JSONObject keys = new JSONObject();
+                        // Use the real keys received from the distributor
+                        keys.put("p256dh", p256dh);
+                        keys.put("auth", auth);
+
+                        JSONObject subscription = new JSONObject();
+                        subscription.put("endpoint", endpoint);
+                        subscription.put("expirationTime", JSONObject.NULL);
+                        subscription.put("keys", keys);
+
+                        String subscriptionJson = subscription.toString();
+
+                        webview.post(() -> {
+                            // This JS function is defined in our new shim
+                            String js = "if (typeof window.__shim_onNewEndpoint === 'function') { window.__shim_onNewEndpoint('" + subscriptionJson.replace("'", "\\'") + "'); }";
+                            webview.evaluateJavascript(js, null);
+                        });
+
+                    } catch (JSONException e) {
+                         Log.e("WebToApk", "Failed to create subscription JSON for shim", e);
+                    }
+                }
+            }
+        };
+
+
+        // Register the receiver with compatibility for different Android versions
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(unifiedPushEndpointReceiver, new IntentFilter("com.myexample.webtoapk.NEW_ENDPOINT"), RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(unifiedPushEndpointReceiver, new IntentFilter("com.myexample.webtoapk.NEW_ENDPOINT"));
+        }
+
         webview.loadUrl(mainURL);
+    }
+
+    private void registerForUnifiedPush(final String vapidPublicKey) {
+        if (vapidPublicKey == null || vapidPublicKey.isEmpty()) {
+            Log.e("WebToApk", "VAPID public key is null or empty. Cannot register for push.");
+            return;
+        }
+
+        UnifiedPush.tryUseCurrentOrDefaultDistributor(this, new Function1<Boolean, Unit>() {
+            @Override
+            public Unit invoke(Boolean success) {
+                if (success) {
+                    Log.d("WebToApk", "UnifiedPush distributor found, registering...");
+                    UnifiedPush.register(
+                        MainActivity.this,
+                        INSTANCE_DEFAULT,
+                        null,
+                        vapidPublicKey
+                    );
+                } else {
+                    Log.w("WebToApk", "No UnifiedPush distributor found or user cancelled.");
+
+                    // We must run UI and WebView operations on the main thread
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        // Show an informative dialog to the user
+                        new AlertDialog.Builder(MainActivity.this)
+                            .setTitle(R.string.push_distributor_required_title)
+                            .setMessage(R.string.push_distributor_required_message)
+                            .setPositiveButton(R.string.learn_more, (dialog, which) -> {
+                                // Open the UnifiedPush website for users to find distributors
+                                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://unifiedpush.org/users/distributors/"));
+                                startActivity(browserIntent);
+                            })
+                            .setNegativeButton(android.R.string.cancel, null)
+                            .show();
+                    });
+                }
+                return Unit.INSTANCE;
+            }
+        });
+    }
+
+    // Add onDestroy to unregister the receiver and prevent memory leaks
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (unifiedPushEndpointReceiver != null) {
+            unregisterReceiver(unifiedPushEndpointReceiver);
+        }
     }
 
     /* This allows:
@@ -805,7 +914,7 @@ public class MainActivity extends AppCompatActivity {
 
             // Create an intent to open the app when the notification is tapped
             Intent intent = new Intent(context, MainActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
 
             NotificationCompat.Builder builder = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
@@ -840,6 +949,90 @@ public class MainActivity extends AppCompatActivity {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             );
         }
+
+
+        /**
+         * Called by the JS shim to trigger the UnifiedPush registration flow.
+         * @param vapidPublicKey The Base64 URL-encoded VAPID public key from the web app.
+         */
+        @JavascriptInterface
+        public void unifiedPushSubscribe(String vapidPublicKey) {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                Log.d("WebToApk", "JS shim triggered UnifiedPush registration.");
+                MainActivity.this.registerForUnifiedPush(vapidPublicKey);
+            });
+        }
+
+        /**
+         * Called by the JS shim to unsubscribe from a push subscription.
+         * The shim doesn't manage multiple instances, so we use the default.
+         */
+        @JavascriptInterface
+        public void unifiedPushUnregister() {
+            Log.d("WebToApk", "JS shim triggered UnifiedPush un-registration for default instance.");
+            UnifiedPush.unregister(context, INSTANCE_DEFAULT);
+        }
+
+
+        /**
+         * Returns the current subscription object as a JSON string for the shim.
+         * This includes the endpoint and dummy keys expected by the Push API.
+         * Returns an empty string if not subscribed.
+         */
+        @JavascriptInterface
+        public String getUnifiedPushSubscriptionJson() {
+            SharedPreferences prefs = context.getSharedPreferences("unifiedpush", Context.MODE_PRIVATE);
+            String endpoint = prefs.getString("endpoint_" + INSTANCE_DEFAULT, null);
+            String p256dh = prefs.getString("p256dh_" + INSTANCE_DEFAULT, null);
+            String auth = prefs.getString("auth_" + INSTANCE_DEFAULT, null);
+
+            if (endpoint == null || endpoint.isEmpty() || p256dh == null || auth == null) {
+                return "";
+            }
+
+            try {
+                // We construct a JSON object that mimics the standard PushSubscription.toJSON() output.
+                JSONObject keys = new JSONObject();
+                keys.put("p256dh", p256dh);
+                keys.put("auth", auth);
+
+                JSONObject subscription = new JSONObject();
+                subscription.put("endpoint", endpoint);
+                subscription.put("expirationTime", JSONObject.NULL);
+                subscription.put("keys", keys);
+
+                return subscription.toString();
+            } catch (JSONException e) {
+                Log.e("WebToApk", "Failed to create subscription JSON", e);
+                return "";
+            }
+        }
+
+        /**
+         * Returns the state of the notification permission for the shim.
+         * "granted", "denied", or "prompt".
+         */
+        @JavascriptInterface
+        public String getNotificationPermissionState() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                    return "granted";
+                } else {
+                    // If we should show a rationale, it means the user has denied it once but can be asked again.
+                    // This is the "prompt" state from the web API's perspective.
+                    if (ActivityCompat.shouldShowRequestPermissionRationale((Activity) context, Manifest.permission.POST_NOTIFICATIONS)) {
+                         return "prompt";
+                    }
+                    // If no rationale, it's either the first time ("prompt") or permanently denied ("denied").
+                    // For simplicity, we can't easily distinguish "denied" from "first-time-prompt" without more state tracking.
+                    // Returning "prompt" is a safe default for the shim.
+                    return "prompt";
+                }
+            }
+            // On older versions, permission is granted at install time.
+            return "granted";
+        }
+
 
     }
 

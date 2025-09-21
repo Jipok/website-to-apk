@@ -10,4 +10,7 @@
     <string name="download_description">Downloading file…</string>
     <string name="download_started">Download started…</string>
     <string name="download_failed">Failed to start download.</string>
+    <string name="push_distributor_required_title">Notification App Required</string>
+    <string name="push_distributor_required_message">A compatible distributor app (e.g., gCompat UP) is required to receive push notifications. Please install one and try again.</string>
+    <string name="learn_more">Learn More</string>
 </resources>

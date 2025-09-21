@@ -11,4 +11,7 @@
     <string name="download_description">正在下载文件…</string>
     <string name="download_started">下载已开始…</string>
     <string name="download_failed">下载启动失败。</string>
+    <string name="push_distributor_required_title">需要通知应用</string>
+    <string name="push_distributor_required_message">需要兼容的分发应用（例如 gCompat UP）才能接收推送通知。请安装一个后重试。</string>
+    <string name="learn_more">了解更多</string>
 </resources>

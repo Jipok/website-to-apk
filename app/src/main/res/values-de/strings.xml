@@ -11,4 +11,7 @@
     <string name="download_description">Datei wird heruntergeladen…</string>
     <string name="download_started">Download gestartet…</string>
     <string name="download_failed">Download konnte nicht gestartet werden.</string>
+    <string name="push_distributor_required_title">Benachrichtigungs-App erforderlich</string>
+    <string name="push_distributor_required_message">Um Push-Benachrichtigungen zu erhalten, ist eine kompatible Verteiler-App (z. B. gCompat UP) erforderlich. Bitte installieren Sie eine und versuchen Sie es erneut.</string>
+    <string name="learn_more">Mehr erfahren</string>
 </resources>
