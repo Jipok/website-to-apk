@@ -639,7 +639,7 @@ get_tools() {
 
 regradle() {
     info "Reinstalling Gradle..."
-    try rm -rf gradle gradlew .gradle
+    try rm -rf gradle gradlew .gradle .gradle-cache
     try mkdir -p gradle/wrapper
 
     cat > gradle/wrapper/gradle-wrapper.properties << EOL
@@ -750,6 +750,9 @@ try cd "$(dirname "$0")"
 
 export ANDROID_HOME=$PWD/cmdline-tools/
 appname=$(grep -Po '(?<=applicationId "com\.)[^.]*' app/build.gradle)
+
+# Set Gradle's cache directory to be local to the project
+export GRADLE_USER_HOME=$PWD/.gradle-cache
 
 command -v wget >/dev/null 2>&1 || error "wget not found. Please install wget"
 
