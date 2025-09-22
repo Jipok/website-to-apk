@@ -70,6 +70,12 @@ import kotlin.Unit;
 import kotlin.jvm.functions.Function1;
 import org.json.JSONException;
 import org.json.JSONObject;
+import androidx.annotation.NonNull;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+import android.graphics.Color;
+import androidx.core.graphics.Insets;
 
 public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
@@ -115,13 +121,23 @@ public class MainActivity extends AppCompatActivity {
     boolean AllowFileAccessFromFileURLs = true;
     boolean showDetailsOnErrorScreen = false;
     boolean forceLandscapeMode = false;
+    boolean edgeToEdge = false;
     boolean DebugWebView = false;
 
     boolean geolocationEnabled = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        if (edgeToEdge) {
+            WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        }
+
         super.onCreate(savedInstanceState);
+
+        if (edgeToEdge) {
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+            getWindow().setNavigationBarColor(Color.TRANSPARENT);
+        }
 
         // Create the NotificationChannel, but only on API 26+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -294,13 +310,47 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         };
-
-
         // Register the receiver with compatibility for different Android versions
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(unifiedPushEndpointReceiver, new IntentFilter("com.myexample.webtoapk.NEW_ENDPOINT"), RECEIVER_NOT_EXPORTED);
         } else {
             registerReceiver(unifiedPushEndpointReceiver, new IntentFilter("com.myexample.webtoapk.NEW_ENDPOINT"));
+        }
+
+        if (edgeToEdge) {
+            ViewCompat.setOnApplyWindowInsetsListener(mainLayout, (v, windowInsets) -> {
+                // Get the insets for system bars in hardware pixels.
+                Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+
+                // Get the device's screen density factor.
+                float density = v.getResources().getDisplayMetrics().density;
+
+                // Convert hardware pixels to density-independent CSS pixels.
+                float top = insets.top / density;
+                float bottom = insets.bottom / density;
+                float left = insets.left / density;
+                float right = insets.right / density;
+
+                Log.d("WebToApk", String.format(java.util.Locale.US,
+                    "Insets (CSS px) -> T:%.2f, B:%.2f, L:%.2f, R:%.2f",
+                    top, bottom, left, right
+                ));
+
+                // Pass insets to WebView via CSS custom properties.
+                // These names are chosen to be close to the standard CSS env() variables.
+                // The web content can then use var(--safe-area-inset-top).
+                String js = String.format(java.util.Locale.US,
+                    "document.documentElement.style.setProperty('--safe-area-inset-top', '%.2fpx');" +
+                    "document.documentElement.style.setProperty('--safe-area-inset-bottom', '%.2fpx');" +
+                    "document.documentElement.style.setProperty('--safe-area-inset-left', '%.2fpx');" +
+                    "document.documentElement.style.setProperty('--safe-area-inset-right', '%.2fpx');" +
+                    "document.dispatchEvent(new CustomEvent('WebToApkInsetsApplied'));",
+                    top, bottom, left, right
+                );
+                webview.evaluateJavascript(js, null);
+
+                return WindowInsetsCompat.CONSUMED;
+            });
         }
 
         if (savedInstanceState != null) {
