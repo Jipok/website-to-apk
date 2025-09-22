@@ -4,6 +4,7 @@ import android.content.DialogInterface;
 import android.net.http.SslError;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.webkit.SslErrorHandler;
@@ -122,12 +123,16 @@ public class MainActivity extends AppCompatActivity {
     boolean showDetailsOnErrorScreen = false;
     boolean forceLandscapeMode = false;
     boolean edgeToEdge = false;
+    boolean forceDarkTheme = false;
     boolean DebugWebView = false;
 
     boolean geolocationEnabled = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        if (forceDarkTheme) {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
+        }
         if (edgeToEdge) {
             WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         }
