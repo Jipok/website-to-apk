@@ -77,6 +77,9 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import android.graphics.Color;
 import androidx.core.graphics.Insets;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
 
 public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
@@ -96,6 +99,7 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<Intent> fileChooserLauncher; // Image upload
     private WebAppInterface webAppInterface;
     private BroadcastReceiver unifiedPushEndpointReceiver;
+    private BroadcastReceiver mediaActionReceiver;
 
     String mainURL = "https://github.com/Jipok";
     boolean requireDoubleBackToExit = true;
@@ -365,6 +369,19 @@ public class MainActivity extends AppCompatActivity {
             // It's a fresh launch. Load the main URL.
             webview.loadUrl(mainURL);
         }
+
+        mediaActionReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (intent != null && MediaPlaybackService.BROADCAST_MEDIA_ACTION.equals(intent.getAction())) {
+                    String action = intent.getStringExtra(MediaPlaybackService.EXTRA_MEDIA_ACTION);
+                    if (action != null) {
+                        executeMediaActionInWebView(action);
+                    }
+                }
+            }
+        };
+        LocalBroadcastManager.getInstance(this).registerReceiver(mediaActionReceiver, new IntentFilter(MediaPlaybackService.BROADCAST_MEDIA_ACTION));
     }
 
     private void registerForUnifiedPush(final String vapidPublicKey) {
@@ -407,12 +424,25 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void executeMediaActionInWebView(String action) {
+        Log.d("WebToApk", "Executing JS for media action: " + action);
+        if (webview != null) {
+            webview.post(() -> {
+                String js = "if (typeof window.__runMediaAction === 'function') { window.__runMediaAction('" + action + "'); }";
+                webview.evaluateJavascript(js, null);
+            });
+        }
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
         if (unifiedPushEndpointReceiver != null) {
             unregisterReceiver(unifiedPushEndpointReceiver);
         }
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mediaActionReceiver);
+        Intent intent = new Intent(this, MediaPlaybackService.class);
+        stopService(intent);
     }
 
     // Save the state of the WebView (current URL, history, scroll position) during OOM kill
@@ -1100,6 +1130,42 @@ public class MainActivity extends AppCompatActivity {
             return "granted";
         }
 
+        @JavascriptInterface
+        public void updateMediaMetadata(String title, String artist, String album, @Nullable String artworkUrl) {
+            Intent intent = new Intent(context, MediaPlaybackService.class);
+            intent.setAction(MediaPlaybackService.ACTION_UPDATE_METADATA);
+            intent.putExtra("title", title);
+            intent.putExtra("artist", artist);
+            intent.putExtra("album", album);
+            intent.putExtra("artworkUrl", artworkUrl);
+            context.startService(intent);
+        }
+
+        @JavascriptInterface
+        public void updateMediaPlaybackState(String state) {
+            Intent intent = new Intent(context, MediaPlaybackService.class);
+            intent.setAction(MediaPlaybackService.ACTION_UPDATE_STATE);
+            intent.putExtra("state", state);
+            context.startService(intent);
+        }
+
+        @JavascriptInterface
+        public void setMediaActionHandlers(String[] actions) {
+            Intent intent = new Intent(context, MediaPlaybackService.class);
+            intent.setAction(MediaPlaybackService.ACTION_SET_HANDLERS);
+            intent.putExtra("actions", actions);
+            context.startService(intent);
+        }
+
+        @JavascriptInterface
+        public void updateMediaPositionState(double duration, double playbackRate, double position) {
+            Intent intent = new Intent(context, MediaPlaybackService.class);
+            intent.setAction(MediaPlaybackService.ACTION_UPDATE_POSITION);
+            intent.putExtra("duration", duration);
+            intent.putExtra("playbackRate", playbackRate);
+            intent.putExtra("position", position);
+            context.startService(intent);
+        }
 
     }
 
