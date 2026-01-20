@@ -362,11 +362,16 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
+        // TODO check https://stackoverflow.com/questions/18479519/how-to-save-restore-webview-state
+        boolean stateRestored = false;
         if (savedInstanceState != null) {
             // Restore the state of the WebView from the saved bundle.
-            webview.restoreState(savedInstanceState);
-        } else {
-            // It's a fresh launch. Load the main URL.
+            stateRestored = webview.restoreState(savedInstanceState) != null;
+            if (stateRestored) Log.d("WebToApk", "Restored WebView state");
+        }
+
+        if (!stateRestored) {
+            // It's a fresh launch. Or broken old. Load the main URL.
             webview.loadUrl(mainURL);
         }
 
@@ -451,6 +456,26 @@ public class MainActivity extends AppCompatActivity {
         super.onSaveInstanceState(outState);
         webview.saveState(outState);
     }
+
+    // TODO idk what do with this. rly need?
+    // @Override
+    // protected void onPause() {
+    //     super.onPause();
+    //     Log.d("WebToApk", "onPause");
+    //     if (webview != null) {
+    //         Log.d("WebToApk", "onPause 2");
+    //         webview.onPause();
+    //     }
+    // }
+    // @Override
+    // protected void onResume() {
+    //     super.onResume();
+    //     Log.d("WebToApk", "onResume");
+    //     if (webview != null) {
+    //         Log.d("WebToApk", "onResume 2");
+    //         webview.onResume();
+    //     }
+    // }
 
     /* This allows:
         Remove "Confirm URL" title from js log/alert/dialog/confirm
@@ -906,6 +931,20 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 Log.d("WebToApk", "Resource error: " + errorCode + " - " + errorDescription + " url: " + request.getUrl());
             }
+        }
+
+        @Override
+        public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+            Log.e("WebToApk", "WebView render process gone! Did crash: " + detail.didCrash());
+            if (webview != null) {
+                ((ViewGroup)webview.getParent()).removeView(webview);
+                webview.destroy();
+                webview = null;
+            }
+            Toast.makeText(MainActivity.this, "Recovering from memory kill...", Toast.LENGTH_SHORT).show();
+            finish();
+            startActivity(getIntent());
+            return true;
         }
 
     }
