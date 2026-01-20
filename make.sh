@@ -31,7 +31,7 @@ error() {
 
 try() {
     local log_file=$(mktemp)
-    
+
     if [ $# -eq 1 ]; then
         # Если передан один аргумент - используем eval для сложных команд
         if ! eval "$1" &> "$log_file"; then
@@ -56,10 +56,10 @@ try() {
 set_var() {
     local java_file="app/src/main/java/com/$appname/webtoapk/MainActivity.java"
     [ ! -f "$java_file" ] && error "MainActivity.java not found"
-    
+
     local pattern="$@"
     [ -z "$pattern" ] && error "Empty pattern. Usage: set_var \"varName = value\""
-    
+
     # Извлекаем имя переменной и новое значение
     local var_name="${pattern%% =*}"
     local new_value="${pattern#*= }"
@@ -73,9 +73,9 @@ set_var() {
     if [[ ! "$new_value" =~ ^(true|false)$ ]]; then
         new_value="\"$new_value\""
     fi
-    
+
     local tmp_file=$(mktemp)
-    
+
     awk -v var="$var_name" -v val="$new_value" '
     {
         if (!found && $0 ~ var " *= *.*;" ) {
@@ -90,7 +90,7 @@ set_var() {
             print $0
         }
     }' "$java_file" > "$tmp_file"
-    
+
     if ! diff -q "$java_file" "$tmp_file" >/dev/null; then
         mv "$tmp_file" "$java_file"
         log "Updated $var_name to $new_value"
@@ -150,16 +150,16 @@ apply_config() {
     info "Using config: $config_file"
 
     config_file=$(merge_config_with_default "$config_file")
-    
+
     while IFS='=' read -r key value || [ -n "$key" ]; do
         # Skip empty lines and comments
         [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
-        
+
         # Remove spaces, tabs, and invisible unicode characters (zero-width space)
         key=$(echo "$key" | tr -cd '[:alnum:]_')
         # Trim whitespaces
         value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-        
+
         case "$key" in
             "id")
                 chid "$value"
@@ -259,7 +259,7 @@ chid() {
     if ! [[ $1 =~ ^[a-zA-Z][a-zA-Z0-9_]*$ ]]; then
         error "Invalid application ID. Use only letters, numbers and underscores, start with a letter"
     fi
-   
+
     try "find . -type f \( -name '*.gradle' -o -name '*.java' -o -name '*.xml' \) -exec \
         sed -i 's/com\.\([a-zA-Z0-9_]*\)\.webtoapk/com.$1.webtoapk/g' {} +"
 
@@ -269,38 +269,38 @@ chid() {
 
     info "Old name: com.$appname.webtoapk"
     info "Renaming to: com.$1.webtoapk"
-    
+
     try "mv app/src/main/java/com/$appname app/src/main/java/com/$1"
 
     appname=$1
-    
+
     log "Application ID changed successfully"
 }
 
 
 rename() {
     local new_name="$*"
-    
+
     if [ -z "$new_name" ]; then
         error "Please provide a display name\nUsage: $0 display_name \"My App Name\""
     fi
-    
+
     # Найти все файлы strings.xml в различных языковых директориях
     find app/src/main/res/values* -name "strings.xml" | while read xml_file; do
         current_name=$(grep -o 'app_name">[^<]*' "$xml_file" | cut -d'>' -f2)
         if [ "$current_name" = "$new_name" ]; then
             continue
         fi
-        
+
         escaped_name=$(echo "$new_name" | sed 's/[\/&]/\\&/g')
         try sed -i "s|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">$escaped_name</string>|" "$xml_file"
-        
+
         # Получаем код языка из пути файла
         lang_code=$(echo "$xml_file" | grep -o 'values-[^/]*' | cut -d'-' -f2)
         if [ -z "$lang_code" ]; then
             lang_code="default"
         fi
-        
+
         log "Display name changed to: $new_name (${lang_code})"
     done
 }
@@ -308,7 +308,7 @@ rename() {
 
 set_deep_link() {
     local manifest_file="app/src/main/AndroidManifest.xml"
-    local host="$@"
+    local hosts_input="$@"
     local tmp_file
     tmp_file=$(mktemp)
 
@@ -336,12 +336,12 @@ set_deep_link() {
         { print }
     ' "$manifest_file" > "$tmp_file"
 
-    # If a host was provided, add the complete intent-filter block back in.
-    if [ -n "$host" ]; then
+    # If hosts were provided, add the complete intent-filter block back in.
+    if [ -n "$hosts_input" ]; then
         local new_tmp_file
         new_tmp_file=$(mktemp)
         # Use awk to insert the new block after the main launcher intent-filter.
-        awk -v host="$host" '
+        awk -v hosts="$hosts_input" '
             # After the first (launcher) intent-filter is closed...
             /<\/intent-filter>/ && !inserted {
                 # ...print the closing tag first.
@@ -353,7 +353,15 @@ set_deep_link() {
                 print "                <category android:name=\"android.intent.category.BROWSABLE\" />"
                 print "                <data android:scheme=\"http\" />"
                 print "                <data android:scheme=\"https\" />"
-                print "                <data android:host=\""host"\" />"
+
+                # Split hosts by space and iterate to create data tags for each host
+                n = split(hosts, h_array, " ")
+                for (i = 1; i <= n; i++) {
+                     if (h_array[i] != "") {
+                        print "                <data android:host=\"" h_array[i] "\" />"
+                     }
+                }
+
                 print "            </intent-filter>"
                 # Set a flag to ensure we only do this once.
                 inserted=1
@@ -369,10 +377,10 @@ set_deep_link() {
 
     # Apply changes only if the file is actually different.
     if ! diff -q "$manifest_file" "$tmp_file" >/dev/null; then
-        if [ -z "$host" ]; then
+        if [ -z "$hosts_input" ]; then
             log "Removing deeplink"
         else
-            log "Setting deeplink host to: $host"
+            log "Setting deeplinks for: $hosts_input"
         fi
         try mv "$tmp_file" "$manifest_file"
     else
@@ -422,7 +430,7 @@ set_icon() {
     local icon_path="$@"
     local default_icon="$PWD/app/example.png"
     local dest_file="app/src/main/res/mipmap/ic_launcher.png"
-    
+
     # If no icon provided, use default
     if [ -z "$icon_path" ]; then
         icon_path="$default_icon"
@@ -435,7 +443,7 @@ set_icon() {
 
     # Validate icon
     [ ! -f "$icon_path" ] && error "Icon file not found: $icon_path"
-    
+
     # Check if file is PNG
     file_type=$(file -b --mime-type "$icon_path")
     if [ "$file_type" != "image/png" ]; then
@@ -444,7 +452,7 @@ set_icon() {
 
     # Create destination directory if needed
     mkdir -p "$(dirname "$dest_file")"
-    
+
     # Check if icon needs to be updated
     if [ -f "$dest_file" ] && cmp -s "$icon_path" "$dest_file"; then
         return 0
@@ -453,7 +461,7 @@ set_icon() {
     if [ -z "$@" ]; then
         warn "Using example.png for icon"
     fi
-    
+
     # Copy icon
     try "cp \"$icon_path\" \"$dest_file\""
     log "Icon updated successfully"
@@ -462,10 +470,10 @@ set_icon() {
 
 set_userscripts() {
     local scripts_dir="app/src/main/assets/userscripts"
-    
+
     # Create destination directory if it doesn't exist
     mkdir -p "$scripts_dir"
-    
+
     # If no arguments provided, clean destination and exit
     if [ $# -eq 0 ] || [ -z "$1" ]; then
         if [ -n "$(ls -A $scripts_dir 2>/dev/null)" ]; then
@@ -479,7 +487,7 @@ set_userscripts() {
     local added=()
     local updated=()
     local removed=()
-    
+
     # Get a list of currently existing script basenames in the destination
     local existing_scripts=()
     # Use find to properly handle filenames with spaces
@@ -511,7 +519,7 @@ set_userscripts() {
         local base_name
         base_name=$(basename "$src_file")
         local dest_file="$scripts_dir/$base_name"
-        
+
         # Add basename to a list of scripts that are currently in config
         current_scripts+=("$base_name")
 
@@ -548,13 +556,13 @@ set_userscripts() {
             log "Removed userscript: $script"
         done
     fi
-    
+
     if [ ${#added[@]} -gt 0 ]; then
         for script in "${added[@]}"; do
             log "Added userscript: $script"
         done
     fi
-    
+
     if [ ${#updated[@]} -gt 0 ]; then
         for script in "${updated[@]}"; do
             log "Updated userscript: $script"
@@ -605,34 +613,34 @@ update_geolocation_permission() {
 
 get_tools() {
     info "Downloading Android Command Line Tools..."
-    
+
     case "$(uname -s)" in
         Linux*)     os_type="linux";;
         # Darwin*)    os_type="mac";;
         *)         error "Unsupported OS";;
     esac
-    
+
     tmp_dir=$(mktemp -d)
     cd "$tmp_dir"
-    
+
     try "wget -q --show-progress 'https://dl.google.com/android/repository/commandlinetools-${os_type}-11076708_latest.zip' -O cmdline-tools.zip"
-    
+
     info "Extracting tools..."
     try "unzip -q cmdline-tools.zip"
     try "mkdir -p '$ANDROID_HOME/cmdline-tools/latest'"
     try "mv cmdline-tools/* '$ANDROID_HOME/cmdline-tools/latest/'"
-    
+
     cd "$OLDPWD"
     rm -rf "$tmp_dir"
 
     info "Accepting licenses..."
     try "yes | '$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME --licenses"
-    
+
     info "Installing necessary SDK components..."
     try "'$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME \
         'platform-tools' \
         'platforms;android-33' \
-        'build-tools;33.0.2'" 
+        'build-tools;33.0.2'"
 
     log "Android SDK successfully installed!"
 }
@@ -651,10 +659,10 @@ zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 EOL
 
-    try wget -q --show-progress https://raw.githubusercontent.com/gradle/gradle/v7.4.0/gradle/wrapper/gradle-wrapper.jar -O gradle/wrapper/gradle-wrapper.jar 
+    try wget -q --show-progress https://raw.githubusercontent.com/gradle/gradle/v7.4.0/gradle/wrapper/gradle-wrapper.jar -O gradle/wrapper/gradle-wrapper.jar
     try wget -q --show-progress https://raw.githubusercontent.com/gradle/gradle/v7.4.0/gradlew -O gradlew
     try chmod +x gradlew
-    
+
     log "Gradle reinstalled successfully"
 }
 
@@ -674,24 +682,24 @@ get_java() {
 
     local tmp_dir=$(mktemp -d)
     cd "$tmp_dir"
-    
+
     info "Downloading OpenJDK ${jdk_version}..."
     try "wget -q --show-progress '$jdk_url' -O openjdk.tar.gz"
-    
+
     info "Verifying checksum..."
     try "echo '${jdk_hash} openjdk.tar.gz' | sha256sum -c -"
-    
+
     info "Unpacking to ${install_dir}..."
     try "mkdir -p '$install_dir'"
     try "tar xf openjdk.tar.gz"
     try "mv jdk-${jdk_version} '$install_dir/'"
-    
+
     cd "$OLDPWD"
     rm -rf "$tmp_dir"
 
     export JAVA_HOME="$install_dir/jdk-${jdk_version}"
     export PATH="$JAVA_HOME/bin:$PATH"
-    
+
     log "OpenJDK ${jdk_version} downloaded successfully!"
 }
 
@@ -797,7 +805,7 @@ if [ $# -eq 0 ]; then
     echo -e "  ${BLUE}$0 build${NC} [config]  - Apply configuration and build"
     echo -e "  ${BLUE}$0 test${NC}            - Install and test APK via adb, show logs"
     echo -e "  ${BLUE}$0 clean${NC}           - Clean build files, reset settings"
-    echo 
+    echo
     echo -e "  ${BLUE}$0 apk${NC}             - Build APK without apply_config"
     echo -e "  ${BLUE}$0 apply_config${NC}    - Apply settings from config file"
 	echo -e "  ${BLUE}$0 get_java${NC}        - Download OpenJDK 17 locally"

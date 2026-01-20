@@ -73,6 +73,8 @@ You can make your app handle links to the website by setting the `deeplink` opti
 For example, if your website is `https://example.com`, set:
 ```ini
 deeplink = example.com
+# or multiple
+deeplink = example.com www.example.com
 ```
 
 ## Userscripts Support
