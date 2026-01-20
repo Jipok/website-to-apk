@@ -155,9 +155,10 @@ apply_config() {
         # Skip empty lines and comments
         [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
         
-        # Trim whitespace
-        key=$(echo "$key" | xargs)
-        value=$(echo "$value" | xargs)
+        # Remove spaces, tabs, and invisible unicode characters (zero-width space)
+        key=$(echo "$key" | tr -cd '[:alnum:]_')
+        # Trim whitespaces
+        value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
         
         case "$key" in
             "id")
