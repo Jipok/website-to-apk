@@ -131,6 +131,7 @@ confirmOpenExternalApp = true         # Show confirmation before opening externa
 blockLocalhostRequests = true         # Block requests to 127.0.0.1
 trustUserCA = false                   # Allow app to trust user-installed SSL certs
 geolocationEnabled     = false        # Block geolocation API
+allowMixedContent      = false        # Allow loading HTTP content on HTTPS sites
 ```
 
 ## Technical Details

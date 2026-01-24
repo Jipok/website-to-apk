@@ -128,6 +128,7 @@ public class MainActivity extends AppCompatActivity {
     boolean forceLandscapeMode = false;
     boolean edgeToEdge = false;
     boolean forceDarkTheme = false;
+    boolean allowMixedContent = false;
     boolean DebugWebView = false;
 
     boolean geolocationEnabled = false;
@@ -197,6 +198,10 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setAllowFileAccess(AllowFileAccess);
         webSettings.setAllowFileAccessFromFileURLs(AllowFileAccessFromFileURLs);
         webview.setWebContentsDebuggingEnabled(DebugWebView);
+
+        if (allowMixedContent) {
+            webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
 
         if (!userAgent.isEmpty()) {
             webSettings.setUserAgentString(userAgent);
