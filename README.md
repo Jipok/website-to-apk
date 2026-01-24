@@ -136,6 +136,29 @@ microphoneEnabled      = false        # Allow access to the microphone for audio
 allowMixedContent      = false        # Allow loading HTTP content on HTTPS sites
 ```
 
+## Edge-to-Edge Display
+
+You can enable an immersive `edge-to-edge` mode where your web content draws behind the system bars (the status bar at the top and the navigation bar at the bottom). This is ideal for modern designs that mimic a native app feel.
+
+```ini
+edgeToEdge = true
+```
+
+**Important:** When this option is enabled, you **must** update your website's CSS to prevent important content from being obscured by the system bars.
+
+The app injects the necessary safe area insets as CSS custom properties on the `<html>` element. You can use these to add padding to your content.
+
+```css
+body {
+  padding-top: var(--safe-area-inset-top);
+  padding-bottom: var(--safe-area-inset-bottom);
+  padding-left: var(--safe-area-inset-left);
+  padding-right: var(--safe-area-inset-right);
+}
+```
+
+Additionally, once the inset variables are applied, the app dispatches a custom event `WebToApkInsetsApplied` on the `document` object.
+
 ## Technical Details
 
 - Target Android API: 33 (Android 13)
