@@ -60,16 +60,16 @@ set_var() {
     local pattern="$@"
     [ -z "$pattern" ] && error "Empty pattern. Usage: set_var \"varName = value\""
 
-    # Извлекаем имя переменной и новое значение
+    # Extract variable name and new value
     local var_name="${pattern%% =*}"
     local new_value="${pattern#*= }"
 
-    # Проверяем существование переменной
+    # Check if variable exists
     if ! grep -q "$var_name *= *.*;" "$java_file"; then
         error "Variable '$var_name' not found in MainActivity.java"
     fi
 
-    # Добавляем кавычки если значение не true/false
+    # Add quotes if value is not boolean
     if [[ ! "$new_value" =~ ^(true|false)$ ]]; then
         new_value="\"$new_value\""
     fi
@@ -79,12 +79,12 @@ set_var() {
     awk -v var="$var_name" -v val="$new_value" '
     {
         if (!found && $0 ~ var " *= *.*;" ) {
-            # Сохраняем начало строки до =
+            # Save start of line up to =
             match($0, "^.*" var " *=")
             before = substr($0, RSTART, RLENGTH)
-            # Заменяем значение
+            # Replace value
             print before " " val ";"
-            # Делаем замену только для первого найденного
+            # Only replace the first occurrence
             found = 1
         } else {
             print $0
@@ -94,10 +94,23 @@ set_var() {
     if ! diff -q "$java_file" "$tmp_file" >/dev/null; then
         mv "$tmp_file" "$java_file"
         log "Updated $var_name to $new_value"
-        # Special handling for geolocationEnabled
-        if [ "$var_name" = "geolocationEnabled" ]; then
-            update_geolocation_permission ${new_value//\"/}
-        fi
+
+        # Clean value from quotes for logic checks
+        local val_clean="${new_value//\"/}"
+
+        # Handle permissions based on specific variable names
+        case "$var_name" in
+            "geolocationEnabled")
+                update_permission "android.permission.ACCESS_FINE_LOCATION" "$val_clean"
+                ;;
+            "cameraEnabled")
+                update_permission "android.permission.CAMERA" "$val_clean"
+                ;;
+            "microphoneEnabled")
+                update_permission "android.permission.RECORD_AUDIO" "$val_clean"
+                update_permission "android.permission.MODIFY_AUDIO_SETTINGS" "$val_clean"
+                ;;
+        esac
     else
         rm "$tmp_file"
     fi
@@ -576,33 +589,39 @@ set_userscripts() {
 }
 
 
-update_geolocation_permission() {
+update_permission() {
+    local permission_name="$1"
+    local enabled="$2"
     local manifest_file="app/src/main/AndroidManifest.xml"
-    local permission='<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />'
-    local enabled="$1"
 
+    # Construct the full permission tag
+    local permission_tag="<uses-permission android:name=\"$permission_name\" />"
     local tmp_file=$(mktemp)
 
     if [ "$enabled" = "true" ]; then
         # Add permission if not already present
-        if ! grep -q "android.permission.ACCESS_FINE_LOCATION" "$manifest_file"; then
-            awk -v perm="$permission" '
+        if ! grep -q "$permission_name" "$manifest_file"; then
+            awk -v tag="$permission_tag" '
             {
                 print $0
+                # Insert permission right after the opening manifest tag
                 if ($0 ~ /<manifest /) {
-                    print "    " perm
+                    print "    " tag
                 }
             }' "$manifest_file" > "$tmp_file"
 
-            log "Added geolocation permission to AndroidManifest.xml"
+            log "Added permission: $permission_name"
             try mv "$tmp_file" "$manifest_file"
+        else
+            rm "$tmp_file"
         fi
     else
         # Remove permission if present
-        if grep -q "android.permission.ACCESS_FINE_LOCATION" "$manifest_file"; then
-            grep -v "android.permission.ACCESS_FINE_LOCATION" "$manifest_file" > "$tmp_file"
+        if grep -q "$permission_name" "$manifest_file"; then
+            # Filter out lines containing the permission name
+            grep -v "$permission_name" "$manifest_file" > "$tmp_file"
 
-            log "Removed geolocation permission from AndroidManifest.xml"
+            log "Removed permission: $permission_name"
             try mv "$tmp_file" "$manifest_file"
         else
             rm "$tmp_file"

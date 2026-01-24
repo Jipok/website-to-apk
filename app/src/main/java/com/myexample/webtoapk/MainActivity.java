@@ -80,10 +80,16 @@ import androidx.core.graphics.Insets;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import android.content.BroadcastReceiver;
 import android.content.IntentFilter;
+import android.webkit.PermissionRequest;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Arrays;
+
 
 public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 2;
+    private static final int MEDIA_PERMISSION_REQUEST_CODE = 1001;
     private static final String NOTIFICATION_CHANNEL_ID = "web_app_notifications";
     private static final String NOTIFICATION_CHANNEL_NAME = "Web App Notifications";
 
@@ -100,6 +106,9 @@ public class MainActivity extends AppCompatActivity {
     private WebAppInterface webAppInterface;
     private BroadcastReceiver unifiedPushEndpointReceiver;
     private BroadcastReceiver mediaActionReceiver;
+    private PermissionRequest currentPermissionRequest;
+    private GeolocationPermissions.Callback geoCallback;
+    private String geoOrigin;
 
     String mainURL = "https://github.com/Jipok";
     boolean requireDoubleBackToExit = true;
@@ -132,6 +141,8 @@ public class MainActivity extends AppCompatActivity {
     boolean DebugWebView = false;
 
     boolean geolocationEnabled = false;
+    boolean cameraEnabled = false;
+    boolean microphoneEnabled = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -214,11 +225,6 @@ public class MainActivity extends AppCompatActivity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webview, true);
         cookieManager.setCookie(mainURL, cookies);
         cookieManager.flush();
-
-        // Request geo access only if have `android.permission.ACCESS_FINE_LOCATION`
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
-        }
 
         // Image upload support
         fileChooserLauncher = registerForActivityResult(
@@ -482,6 +488,51 @@ public class MainActivity extends AppCompatActivity {
     //     }
     // }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        // Check if ALL permissions in the array are granted
+        boolean isGranted = true;
+        if (grantResults.length == 0) {
+            isGranted = false;
+        } else {
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    isGranted = false;
+                    break;
+                }
+            }
+        }
+
+        // Handle Camera/Mic
+        if (requestCode == MEDIA_PERMISSION_REQUEST_CODE) {
+            if (currentPermissionRequest != null) {
+                if (isGranted) {
+                    currentPermissionRequest.grant(currentPermissionRequest.getResources());
+                } else {
+                    currentPermissionRequest.deny();
+                }
+                currentPermissionRequest = null;
+            }
+        }
+        // Handle Location (Re-using the ID or creating a new one)
+        else if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (geoCallback != null) {
+                if (isGranted) {
+                    // Tell WebView that permission is granted
+                    geoCallback.invoke(geoOrigin, true, false);
+                } else {
+                    // Tell WebView that permission is denied
+                    geoCallback.invoke(geoOrigin, false, false);
+                }
+                geoCallback = null;
+                geoOrigin = null;
+            }
+        }
+    }
+
+
     /* This allows:
         Remove "Confirm URL" title from js log/alert/dialog/confirm
         Open HTML5 video in fullscreen
@@ -582,8 +633,20 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-            // Automatically grant permission for geolocation requests
-            callback.invoke(origin, true, false);
+            if (!geolocationEnabled) {
+                callback.invoke(origin, false, false);
+                return;
+            }
+
+            if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                // Permission missing. Save callback and ask User.
+                geoCallback = callback;
+                geoOrigin = origin;
+                ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+            } else {
+                // Permission already granted by OS. Proceed.
+                callback.invoke(origin, true, false);
+            }
         }
 
 
@@ -662,6 +725,52 @@ public class MainActivity extends AppCompatActivity {
             }
 
             return true;
+        }
+
+        @Override
+        public void onPermissionRequest(final PermissionRequest request) {
+            // Check if feature is enabled in config
+            // If the site asks for video but cameraEnabled is false -> deny immediately
+            for (String resource : request.getResources()) {
+                if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource) && !cameraEnabled) {
+                    request.deny();
+                    return;
+                }
+                if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) && !microphoneEnabled) {
+                    request.deny();
+                    return;
+                }
+            }
+
+            // Calculate which Android permissions correspond to the requested WebView resources
+            List<String> permissionsNeeded = new ArrayList<>();
+            for (String resource : request.getResources()) {
+                if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                    if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                        permissionsNeeded.add(Manifest.permission.CAMERA);
+                    }
+                }
+                if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                    if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                        permissionsNeeded.add(Manifest.permission.RECORD_AUDIO);
+                    }
+                }
+            }
+
+            if (permissionsNeeded.isEmpty()) {
+                // We already have all OS permissions, grant Web permission immediately
+                request.grant(request.getResources());
+            } else {
+                // We are missing OS permissions. Save the request and ask the user.
+                currentPermissionRequest = request;
+                ActivityCompat.requestPermissions(MainActivity.this, permissionsNeeded.toArray(new String[0]), MEDIA_PERMISSION_REQUEST_CODE);
+            }
+        }
+
+        @Override
+        public void onPermissionRequestCanceled(PermissionRequest request) {
+            super.onPermissionRequestCanceled(request);
+            currentPermissionRequest = null;
         }
     }
 
