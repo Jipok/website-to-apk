@@ -138,6 +138,7 @@ public class MainActivity extends AppCompatActivity {
     boolean edgeToEdge = false;
     boolean forceDarkTheme = false;
     boolean allowMixedContent = false;
+    String cacheMode = "default";
     boolean DebugWebView = false;
 
     boolean geolocationEnabled = false;
@@ -218,7 +219,22 @@ public class MainActivity extends AppCompatActivity {
             webSettings.setUserAgentString(userAgent);
         }
 
-        webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        switch (cacheMode) {
+            case "aggressive":
+                // Offline-first: Use cache if content is there, otherwise load from network.
+                webSettings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                break;
+            case "no_cache":
+                // Always load from the network, do not use the cache
+                webSettings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+                webview.clearCache(true);
+                break;
+            default:
+                // Uses cache based on server's "Cache-Control" headers
+                webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                break;
+        }
+
         webview.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
 
         CookieManager cookieManager = CookieManager.getInstance();
@@ -1320,6 +1336,15 @@ public class MainActivity extends AppCompatActivity {
             context.startService(intent);
         }
 
+        @JavascriptInterface
+        public void clearAppCache() {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                if (webview != null) {
+                    webview.clearCache(true);
+                    Log.d("WebToApk", "Cache cleared via WebToAPK.clearAppCache() from js");
+                }
+            });
+        }
     }
 
 }

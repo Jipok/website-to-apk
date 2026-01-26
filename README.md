@@ -129,11 +129,12 @@ forceLandscapeMode = false            # Lock screen orientation to landscape
 showDetailsOnErrorScreen = false      # Show connection error details for user
 confirmOpenExternalApp = true         # Show confirmation before opening external app
 blockLocalhostRequests = true         # Block requests to 127.0.0.1
-trustUserCA = false                   # Allow app to trust user-installed SSL certs
+trustUserCA            = false        # Allow app to trust user-installed SSL certs
 geolocationEnabled     = false        # Allow access to device location (GPS)
 cameraEnabled          = false        # Allow access to the camera for WebRTC or scanning
 microphoneEnabled      = false        # Allow access to the microphone for audio recording or calls
 allowMixedContent      = false        # Allow loading HTTP content on HTTPS sites
+cacheMode              = default      # Or: "no_cache" (always network), "aggressive" (offline-first)
 ```
 
 ## Edge-to-Edge Display
