@@ -75,8 +75,8 @@ set_var() {
     new_value="${new_value%\'}"
     new_value="${new_value#\'}"
 
-    # Add quotes if value is not boolean
-    if [[ ! "$new_value" =~ ^(true|false)$ ]]; then
+    # Add quotes if value is not boolean AND not a number/integer
+    if [[ ! "$new_value" =~ ^(true|false)$ ]] && [[ ! "$new_value" =~ ^[0-9]+$ ]]; then
         new_value="\"$new_value\""
     fi
 
