@@ -69,6 +69,12 @@ set_var() {
         error "Variable '$var_name' not found in MainActivity.java"
     fi
 
+    # Remove surrounding quotes (double or single) if provided in the config
+    new_value="${new_value%\"}"
+    new_value="${new_value#\"}"
+    new_value="${new_value%\'}"
+    new_value="${new_value#\'}"
+
     # Add quotes if value is not boolean
     if [[ ! "$new_value" =~ ^(true|false)$ ]]; then
         new_value="\"$new_value\""
@@ -115,6 +121,7 @@ set_var() {
         rm "$tmp_file"
     fi
 }
+
 
 merge_config_with_default() {
     local default_conf="app/default.conf"
