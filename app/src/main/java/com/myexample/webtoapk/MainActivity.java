@@ -96,7 +96,6 @@ public class MainActivity extends AppCompatActivity {
     private WebView webview;
     private UserScriptManager userScriptManager;
     private ProgressBar spinner;
-    private Animation fadeInAnimation;
     private View mainLayout;
     private View errorLayout;
     private ViewGroup parentLayout;
@@ -139,6 +138,7 @@ public class MainActivity extends AppCompatActivity {
     boolean forceDarkTheme = false;
     boolean allowMixedContent = false;
     String cacheMode = "default";
+    int fadeInDuration = 400;
     boolean DebugWebView = false;
 
     boolean geolocationEnabled = false;
@@ -190,9 +190,8 @@ public class MainActivity extends AppCompatActivity {
             mainURL = data.toString();
         }
 
-        fadeInAnimation = AnimationUtils.loadAnimation(this, R.anim.fade_in);
-
         webview = findViewById(R.id.webView);
+        webview.setAlpha(0f);
         spinner = findViewById(R.id.progressBar1);
         webview.setWebViewClient(new CustomWebViewClient());
         webview.setWebChromeClient(new CustomWebChrome());
@@ -209,6 +208,8 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setSavePassword(SavePassword);
         webSettings.setAllowFileAccess(AllowFileAccess);
         webSettings.setAllowFileAccessFromFileURLs(AllowFileAccessFromFileURLs);
+        webSettings.setUseWideViewPort(true);
+        webSettings.setLoadWithOverviewMode(true);
         webview.setWebContentsDebuggingEnabled(DebugWebView);
 
         if (allowMixedContent) {
@@ -1012,9 +1013,8 @@ public class MainActivity extends AppCompatActivity {
             if (!errorOccurred) {
                 Log.d("WebToApk","Current page: " + url);
                 spinner.setVisibility(View.GONE);
-                if (!webview.isShown()) {
-                    webview.startAnimation(fadeInAnimation);
-                    webview.setVisibility(View.VISIBLE);
+                if (webview.getAlpha() == 0f) {
+                    webview.animate().alpha(1f).setDuration(fadeInDuration).start();
                 }
             }
             super.onPageFinished(webview, url);
@@ -1106,7 +1106,7 @@ public class MainActivity extends AppCompatActivity {
     public void tryAgain(View v) {
         parentLayout.removeView(errorLayout);
         parentLayout.addView(mainLayout);
-        webview.setVisibility(View.GONE);
+        webview.setAlpha(0f);
         spinner.setVisibility(View.VISIBLE);
         errorOccurred = false;
         webview.reload();

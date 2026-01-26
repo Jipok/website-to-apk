@@ -135,6 +135,7 @@ cameraEnabled          = false        # Allow access to the camera for WebRTC or
 microphoneEnabled      = false        # Allow access to the microphone for audio recording or calls
 allowMixedContent      = false        # Allow loading HTTP content on HTTPS sites
 cacheMode              = default      # Or: "no_cache" (always network), "aggressive" (offline-first)
+fadeInDuration         = 400          # Duration(in ms) of WebView fadeIn animation after spinner gone
 ```
 
 ## Edge-to-Edge Display
