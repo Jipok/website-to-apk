@@ -765,7 +765,13 @@ check_and_find_java() {
 }
 
 build() {
-    apply_config $@
+    local config_arg="${1-}"
+
+    if [ -n "$config_arg" ] && [ -d "$config_arg" ]; then
+        config_arg="$config_arg/webapk.conf"
+    fi
+
+    apply_config "$config_arg"
     apk
 }
 
