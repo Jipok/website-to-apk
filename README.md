@@ -33,6 +33,7 @@ openExternalLinksInBrowser = true   # If allowed: open external links in browser
 confirmOpenInBrowser = true         # Show confirmation before opening external browser
 
 allowOpenMobileApp = false          # Block external app links/schemes
+enablePullToRefresh = true          # Enable pull to refresh
 ```
 
 3. Generate signing key (only needed once, keep the generated file safe):
@@ -175,4 +176,4 @@ Additionally, once the inset variables are applied, the app dispatches a custom 
 - The keystore `app/my-release-key.jks` password is set to "123456" by default
 - Internet permission is required and automatically included
 - If you need to support [different Android versions](https://apilevels.com/), edit `app/build.gradle` accordingly
-- Based on the original work from: https://github.com/successtar/web-to-app  
+- Based on the original work from: https://github.com/successtar/web-to-app

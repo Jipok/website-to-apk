@@ -66,4 +66,5 @@ dependencies {
     implementation 'org.unifiedpush.android:connector:3.0.10'
     implementation 'androidx.media:media:1.6.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
+    implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
 }

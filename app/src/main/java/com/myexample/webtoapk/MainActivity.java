@@ -84,7 +84,7 @@ import android.webkit.PermissionRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Arrays;
-
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
@@ -94,6 +94,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String NOTIFICATION_CHANNEL_NAME = "Web App Notifications";
 
     private WebView webview;
+    private SwipeRefreshLayout swipe;
     private UserScriptManager userScriptManager;
     private ProgressBar spinner;
     private View mainLayout;
@@ -144,6 +145,7 @@ public class MainActivity extends AppCompatActivity {
     boolean geolocationEnabled = false;
     boolean cameraEnabled = false;
     boolean microphoneEnabled = false;
+    boolean enablePullToRefresh = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -211,6 +213,15 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setUseWideViewPort(true);
         webSettings.setLoadWithOverviewMode(true);
         webview.setWebContentsDebuggingEnabled(DebugWebView);
+
+        swipe = findViewById(R.id.swipeRefresh);
+        swipe.setOnRefreshListener(() -> webview.reload());
+        swipe.setEnabled(enablePullToRefresh);
+        if (enablePullToRefresh) {
+          webview.setOnScrollChangeListener((v, scrollX, scrollY, oldScrollX, oldScrollY) -> {
+            swipe.setEnabled(scrollY == 0);
+          });
+        }
 
         if (allowMixedContent) {
             webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
@@ -1025,6 +1036,7 @@ public class MainActivity extends AppCompatActivity {
                     webview.animate().alpha(1f).setDuration(fadeInDuration).start();
                 }
             }
+            swipe.setRefreshing(false);
             super.onPageFinished(webview, url);
         }
 
