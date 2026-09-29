@@ -63,6 +63,7 @@ Pre-configured configuration files for YouTube are available in the <code>confs/
 - `./make.sh clean` - Clean build files
 -
 - `./make.sh apk` - Build APK without apply_config
+- `./make.sh aab` - Build AAB without apply_config
 - `./make.sh apply_config` - Apply settings from configuration file
 - `./make.sh get_java` - Download OpenJDK 17 locally
 

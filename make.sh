@@ -207,30 +207,41 @@ apply_config() {
 }
 
 
-apk() {
-    if [ ! -f "app/my-release-key.jks" ]; then
-        error "Keystore file not found. Run './make.sh keygen' first"
-    fi
+build_artifact() {
+    [ ! -f "app/my-release-key.jks" ] && error "Keystore file not found. Run './make.sh keygen' first"
 
-    rm -f app/build/outputs/apk/release/app-release.apk
+    local ext="$1" task dir
+    case "$ext" in
+        apk) task="assembleRelease"; dir="apk" ;;
+        aab) task="bundleRelease";   dir="bundle" ;;
+        *)   error "Unknown artifact type: $ext" ;;
+    esac
 
-    info "Building APK..."
-    try "./gradlew assembleRelease --no-daemon --quiet"
+    local output="app/build/outputs/$dir/release/app-release.$ext"
+    local destination="$appname.$ext"
+    local label="${ext^^}"
 
-    if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-        log "APK successfully built and signed"
-        try "cp app/build/outputs/apk/release/app-release.apk '$appname.apk'"
-        echo -e "${BOLD}----------------"
-        echo -e "Final APK copied to: ${GREEN}$appname.apk${NC}"
-        echo -e "Size: ${BLUE}$(du -h app/build/outputs/apk/release/app-release.apk | cut -f1)${NC}"
-        echo -e "Package: ${BLUE}com.${appname}.webtoapk${NC}"
-        echo -e "App name: ${BLUE}$(grep -o 'app_name">[^<]*' app/src/main/res/values/strings.xml | cut -d'>' -f2)${NC}"
-        echo -e "URL: ${BLUE}$(grep 'String mainURL' app/src/main/java/com/$appname/webtoapk/*.java | cut -d'"' -f2)${NC}"
-        echo -e "${BOLD}----------------${NC}"
-    else
-        error "Build failed"
-    fi
+    rm -f "$output"
+
+    info "Building $label..."
+    try ./gradlew "$task" --no-daemon --quiet
+
+    [ ! -f "$output" ] && error "$label build failed: output file not found"
+
+    try cp "$output" "$destination"
+
+    log "$label successfully built and signed"
+    echo -e "${BOLD}----------------"
+    echo -e "Final $label copied to: ${GREEN}${destination}${NC}"
+    echo -e "Size: ${BLUE}$(du -h "$output" | cut -f1)${NC}"
+    echo -e "Package: ${BLUE}com.${appname}.webtoapk${NC}"
+    echo -e "App name: ${BLUE}$(grep -o 'app_name">[^<]*' app/src/main/res/values/strings.xml | cut -d'>' -f2)${NC}"
+    echo -e "URL: ${BLUE}$(grep 'String mainURL' app/src/main/java/com/"$appname"/webtoapk/*.java | cut -d'"' -f2)${NC}"
+    echo -e "${BOLD}----------------${NC}"
 }
+
+apk() { build_artifact apk; }
+aab() { build_artifact aab; }
 
 test() {
     info "Detected app name: $appname"
@@ -839,6 +850,7 @@ if [ $# -eq 0 ]; then
     echo -e "  ${BLUE}$0 clean${NC}           - Clean build files, reset settings"
     echo
     echo -e "  ${BLUE}$0 apk${NC}             - Build APK without apply_config"
+    echo -e "  ${BLUE}$0 aab${NC}             - Build AAB without apply_config"
     echo -e "  ${BLUE}$0 apply_config${NC}    - Apply settings from config file"
 	echo -e "  ${BLUE}$0 get_java${NC}        - Download OpenJDK 17 locally"
     echo -e "  ${BLUE}$0 regradle${NC}        - Reinstall gradle. You don't need it"
