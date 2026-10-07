@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <base-config>
+    <!-- While a network security config is present, the manifest's
+         usesCleartextTraffic is ignored (API 24+), so cleartext is allowed here
+         explicitly to match the app's intent and keep HTTP sites working. -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
-            <certificates src="user" />
         </trust-anchors>
     </base-config>
 </network-security-config>

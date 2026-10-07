@@ -419,41 +419,32 @@ set_deep_link() {
     fi
 }
 
+# trustUserCA controls whether the device's user-installed CAs are trusted.
+# android:networkSecurityConfig is hardcoded in AndroidManifest.xml, so CAs bundled
+# into res/raw (referenced as <certificates src="@raw/name" />) work out of the box.
 set_network_security_config() {
-    local manifest_file="app/src/main/AndroidManifest.xml"
-    local config_attr='android:networkSecurityConfig="@xml/network_security_config"'
+    local nsc_file="app/src/main/res/xml/network_security_config.xml"
     local enabled="$1"
-
     local tmp_file
     tmp_file=$(mktemp)
 
     if [ "$enabled" = "true" ]; then
-        # Add config to the <application> tag if not present
-        if ! grep -q "networkSecurityConfig" "$manifest_file"; then
-            awk -v attr=" $config_attr" '
-            /<\s*application/ { in_app_tag = 1 }
-            in_app_tag && />/ {
-                sub(/>/, attr ">")
-                in_app_tag = 0
-            }
-            { print }
-            ' "$manifest_file" > "$tmp_file"
-
-            log "Enabling user CA support in AndroidManifest.xml"
-            try mv "$tmp_file" "$manifest_file"
-        else
-             rm -f "$tmp_file"
-        fi
-    else
-        # Remove config from the <application> tag if present
-        if grep -q "networkSecurityConfig" "$manifest_file"; then
-            sed "s# ${config_attr}##" "$manifest_file" > "$tmp_file"
-            log "Disabling user CA support in AndroidManifest.xml"
-            try mv "$tmp_file" "$manifest_file"
-        else
+        if grep -qE '^[[:space:]]*<certificates src="user"' "$nsc_file"; then
             rm -f "$tmp_file"
+            return 0
         fi
+        sed 's#^\([[:space:]]*\)<certificates src="system" />#\1<certificates src="system" />\n\1<certificates src="user" />#' "$nsc_file" > "$tmp_file"
+        log "Trusting user-installed CAs"
+    else
+        if ! grep -qE '^[[:space:]]*<certificates src="user"' "$nsc_file"; then
+            rm -f "$tmp_file"
+            return 0
+        fi
+        grep -vE '^[[:space:]]*<certificates src="user"' "$nsc_file" > "$tmp_file"
+        log "Not trusting user-installed CAs"
     fi
+
+    try mv "$tmp_file" "$nsc_file"
 }
 
 

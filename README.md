@@ -67,17 +67,6 @@ Pre-configured configuration files for YouTube are available in the <code>confs/
 - `./make.sh apply_config` - Apply settings from configuration file
 - `./make.sh get_java` - Download OpenJDK 17 locally
 
-## App Links / Deep Links
-
-You can make your app handle links to the website by setting the `deeplink` option in your configuration file. When set, clicking links to your website on the device will open them in your app instead of a browser.
-
-For example, if your website is `https://example.com`, set:
-```ini
-deeplink = example.com
-# or multiple
-deeplink = example.com www.example.com
-```
-
 ## Userscripts Support
 
 The app supports userscripts (similar to Tampermonkey/Violentmonkey scripts) through the `scripts` configuration option:
@@ -139,7 +128,24 @@ cacheMode              = default      # Or: "no_cache" (always network), "aggres
 fadeInDuration         = 400          # Duration(in ms) of WebView fadeIn animation after spinner gone
 ```
 
-## Edge-to-Edge Display
+## Advanced Topics
+
+<details>
+<summary><b>App Links / Deep Links</b></summary>
+
+You can make your app handle links to the website by setting the `deeplink` option in your configuration file. When set, clicking links to your website on the device will open them in your app instead of a browser.
+
+For example, if your website is `https://example.com`, set:
+```ini
+deeplink = example.com
+# or multiple
+deeplink = example.com www.example.com
+```
+
+</details>
+
+<details>
+<summary><b>Edge-to-Edge Display</b></summary>
 
 You can enable an immersive `edge-to-edge` mode where your web content draws behind the system bars (the status bar at the top and the navigation bar at the bottom). This is ideal for modern designs that mimic a native app feel.
 
@@ -161,6 +167,26 @@ body {
 ```
 
 Additionally, once the inset variables are applied, the app dispatches a custom event `WebToApkInsetsApplied` on the `document` object.
+
+</details>
+
+<details>
+<summary><b>Bundling Custom CA Certificates</b></summary>
+
+`trustUserCA = true` only trusts CAs the **user installed on the device**. To make the app trust a CA out of the box, bundle it:
+
+1. Put the PEM file into `app/src/main/res/raw/` (e.g. `app/src/main/res/raw/my_root_ca.pem`).
+2. Reference it in `app/src/main/res/xml/network_security_config.xml`:
+```xml
+<trust-anchors>
+    <certificates src="system" />
+    <certificates src="@raw/my_root_ca" />
+</trust-anchors>
+```
+
+The manifest always references this file, so no extra configuration is needed. Use a `<domain-config>` instead of `<base-config>` to trust the CA for specific hosts only.
+
+</details>
 
 ## Technical Details
 
