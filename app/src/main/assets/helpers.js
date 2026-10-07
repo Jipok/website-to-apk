@@ -215,43 +215,46 @@ const fakeServiceWorkerRegistration = {
     toString: function() { return '[object FakeServiceWorkerRegistration]'; }
 };
 
-// Ensure navigator.serviceWorker exists
+// Emulate Web Push by faking navigator.serviceWorker, but only when the WebView
+// has no real one. WebView has no Push API at all (WONTFIX), so when the real
+// container is absent we substitute our UnifiedPush-backed fake; when it exists,
+// leave it alone so PWA sites keep offline/caching.
 if (!navigator.serviceWorker) {
     navigator.serviceWorker = {};
-}
 
-// Define properties using Object.defineProperty for more robustness
-Object.defineProperties(navigator.serviceWorker, {
-    'ready': {
-        value: Promise.resolve(fakeServiceWorkerRegistration),
-        writable: true, configurable: true
-    },
-    'register': {
-        value: function(scriptURL, options) {
-            console.log(`WebToApk Shim: Intercepted service worker registration for ${scriptURL}.`);
-            return Promise.resolve(fakeServiceWorkerRegistration);
+    // Define properties using Object.defineProperty for more robustness
+    Object.defineProperties(navigator.serviceWorker, {
+        'ready': {
+            value: Promise.resolve(fakeServiceWorkerRegistration),
+            writable: true, configurable: true
         },
-        writable: true, configurable: true
-    },
-    'getRegistration': {
-        value: function() {
-            return Promise.resolve(fakeServiceWorkerRegistration);
+        'register': {
+            value: function(scriptURL, options) {
+                console.log(`WebToApk Shim: Intercepted service worker registration for ${scriptURL}.`);
+                return Promise.resolve(fakeServiceWorkerRegistration);
+            },
+            writable: true, configurable: true
         },
-        writable: true, configurable: true
-    },
-    'controller': {
-        value: null,
-        writable: true, configurable: true
-    },
-    'addEventListener': {
-            value: (type, listener) => {
-            if (type === 'message') {
-                console.log("WebToApk Shim: 'message' event listener added, but will not be fired.");
-            }
+        'getRegistration': {
+            value: function() {
+                return Promise.resolve(fakeServiceWorkerRegistration);
+            },
+            writable: true, configurable: true
         },
-        writable: true, configurable: true
-    }
-});
+        'controller': {
+            value: null,
+            writable: true, configurable: true
+        },
+        'addEventListener': {
+                value: (type, listener) => {
+                if (type === 'message') {
+                    console.log("WebToApk Shim: 'message' event listener added, but will not be fired.");
+                }
+            },
+            writable: true, configurable: true
+        }
+    });
+}
 
 
 
