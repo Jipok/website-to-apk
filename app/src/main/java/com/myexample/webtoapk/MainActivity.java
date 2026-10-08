@@ -78,6 +78,7 @@ import androidx.core.view.WindowInsetsCompat;
 import android.graphics.Color;
 import androidx.core.graphics.Insets;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.content.BroadcastReceiver;
 import android.content.IntentFilter;
 import android.webkit.PermissionRequest;
@@ -96,6 +97,7 @@ public class MainActivity extends AppCompatActivity {
     private WebView webview;
     private UserScriptManager userScriptManager;
     private ProgressBar spinner;
+    private SwipeRefreshLayout swipeRefresh;
     private View mainLayout;
     private View errorLayout;
     private ViewGroup parentLayout;
@@ -108,6 +110,10 @@ public class MainActivity extends AppCompatActivity {
     private PermissionRequest currentPermissionRequest;
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigin;
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+    private final Runnable refreshTimeout = () -> {
+        if (swipeRefresh != null) swipeRefresh.setRefreshing(false);
+    };
 
     String mainURL = "https://github.com/Jipok";
     boolean requireDoubleBackToExit = true;
@@ -137,6 +143,7 @@ public class MainActivity extends AppCompatActivity {
     boolean edgeToEdge = false;
     boolean forceDarkTheme = false;
     boolean allowMixedContent = false;
+    boolean pullToRefresh = false;
     String cacheMode = "default";
     int fadeInDuration = 400;
     boolean DebugWebView = false;
@@ -193,6 +200,9 @@ public class MainActivity extends AppCompatActivity {
         webview = findViewById(R.id.webView);
         webview.setAlpha(0f);
         spinner = findViewById(R.id.progressBar1);
+        swipeRefresh = findViewById(R.id.swipeRefresh);
+        swipeRefresh.setEnabled(pullToRefresh);
+        swipeRefresh.setOnRefreshListener(this::onPullToRefresh);
         webview.setWebViewClient(new CustomWebViewClient());
         webview.setWebChromeClient(new CustomWebChrome());
         webAppInterface = new WebAppInterface(this);
@@ -1017,6 +1027,10 @@ public class MainActivity extends AppCompatActivity {
         // Animation on app open
         @Override
         public void onPageFinished(WebView webview, String url) {
+            if (swipeRefresh != null) {
+                swipeRefresh.setRefreshing(false);
+                uiHandler.removeCallbacks(refreshTimeout);
+            }
             // Без флага errorOccurred у нас будет видно ошибку webview пока идёт анимация после tryAgain
             if (!errorOccurred) {
                 Log.d("WebToApk","Current page: " + url);
@@ -1118,6 +1132,27 @@ public class MainActivity extends AppCompatActivity {
         spinner.setVisibility(View.VISIBLE);
         errorOccurred = false;
         webview.reload();
+    }
+
+    /* Pull-to-refresh: let the page handle it via WebToApk.onPullToRefresh, else reload */
+    private void onPullToRefresh() {
+        if (webview == null) {
+            swipeRefresh.setRefreshing(false);
+            return;
+        }
+        webview.evaluateJavascript(
+            "(function(){try{var f=window.WebToApk&&window.WebToApk.onPullToRefresh;" +
+            "return (typeof f==='function')?!!f():false;}catch(e){return false;}})()",
+            value -> {
+                if ("true".equals(value)) {
+                    Log.d("WebToApk", "Page handles pull-to-refresh");
+                    uiHandler.removeCallbacks(refreshTimeout);
+                    uiHandler.postDelayed(refreshTimeout, 10000);
+                } else {
+                    Log.d("WebToApk", "Reloading page on pull-to-refresh");
+                    webview.reload();
+                }
+            });
     }
 
     // JS API
@@ -1350,6 +1385,29 @@ public class MainActivity extends AppCompatActivity {
                 if (webview != null) {
                     webview.clearCache(true);
                     Log.d("WebToApk", "Cache cleared via WebToAPK.clearAppCache() from js");
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void setPullToRefreshEnabled(final boolean enabled) {
+            uiHandler.post(() -> {
+                if (swipeRefresh != null) {
+                    swipeRefresh.setEnabled(enabled);
+                    if (!enabled) {
+                        swipeRefresh.setRefreshing(false);
+                        uiHandler.removeCallbacks(refreshTimeout);
+                    }
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void setPullToRefreshRefreshing(final boolean refreshing) {
+            uiHandler.post(() -> {
+                if (swipeRefresh != null) {
+                    uiHandler.removeCallbacks(refreshTimeout);
+                    swipeRefresh.setRefreshing(refreshing);
                 }
             });
         }

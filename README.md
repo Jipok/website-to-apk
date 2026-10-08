@@ -124,6 +124,7 @@ geolocationEnabled     = false        # Allow access to device location (GPS)
 cameraEnabled          = false        # Allow access to the camera for WebRTC or scanning
 microphoneEnabled      = false        # Allow access to the microphone for audio recording or calls
 allowMixedContent      = false        # Allow loading HTTP content on HTTPS sites
+pullToRefresh          = false        # Enable native pull-to-refresh gesture
 cacheMode              = default      # Or: "no_cache" (always network), "aggressive" (offline-first)
 fadeInDuration         = 400          # Duration(in ms) of WebView fadeIn animation after spinner gone
 ```
@@ -167,6 +168,29 @@ body {
 ```
 
 Additionally, once the inset variables are applied, the app dispatches a custom event `WebToApkInsetsApplied` on the `document` object.
+
+</details>
+
+<details>
+<summary><b>Pull-to-Refresh</b></summary>
+
+Set `pullToRefresh = true` to enable the native pull-down-to-refresh gesture.
+
+By default the page is simply reloaded. If you want to handle the refresh yourself (e.g. fetch data and update the DOM without a full page reload), define a hook on the injected `WebToApk` object:
+
+```js
+WebToApk.onPullToRefresh = function () {
+  // ... your refresh logic ...
+  WebToApk.setPullToRefreshRefreshing(false); // stop the spinner when done
+  return true; // true = the app does not reload the page
+};
+```
+
+If the hook is missing or returns `false`, the app reloads the page. When the hook returns `true` the spinner is stopped after 10 seconds even if `setPullToRefreshRefreshing(false)` was never called.
+
+`WebToApk.setPullToRefreshEnabled(false)` can be called from JS to toggle the gesture at runtime.
+
+See [`confs/ptr-demo/`](confs/ptr-demo/) for a ready-to-build example that switches between JS and native control on the fly.
 
 </details>
 
