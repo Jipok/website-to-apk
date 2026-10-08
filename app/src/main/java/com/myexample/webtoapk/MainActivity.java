@@ -168,15 +168,13 @@ public class MainActivity extends AppCompatActivity {
             getWindow().setNavigationBarColor(Color.TRANSPARENT);
         }
 
-        // Create the NotificationChannel, but only on API 26+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, importance);
-            channel.setDescription("Channel for web app notifications");
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
-            Log.d("WebToApk", "Notification channel created.");
-        }
+        // Create the NotificationChannel (minSdk 26)
+        int importance = NotificationManager.IMPORTANCE_DEFAULT;
+        NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, importance);
+        channel.setDescription("Channel for web app notifications");
+        NotificationManager notificationManager = getSystemService(NotificationManager.class);
+        notificationManager.createNotificationChannel(channel);
+        Log.d("WebToApk", "Notification channel created.");
 
         if (forceLandscapeMode) {
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);

@@ -17,7 +17,6 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
-import android.os.Build;
 import android.content.SharedPreferences;
 
 // Unified Push v3
@@ -86,15 +85,13 @@ public class PushServiceImpl extends PushService {
             content = messageStr;
         }
 
-        // Create a notification channel if on API 26+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, importance);
-            channel.setDescription("Channel for UnifiedPush notifications");
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            if (notificationManager != null) {
-                notificationManager.createNotificationChannel(channel);
-            }
+        // Create the notification channel (minSdk 26)
+        int importance = NotificationManager.IMPORTANCE_DEFAULT;
+        NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, importance);
+        channel.setDescription("Channel for UnifiedPush notifications");
+        NotificationManager channelManager = getSystemService(NotificationManager.class);
+        if (channelManager != null) {
+            channelManager.createNotificationChannel(channel);
         }
 
         // Create an intent to open the app when the notification is tapped
