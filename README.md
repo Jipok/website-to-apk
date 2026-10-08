@@ -216,8 +216,13 @@ The app injects a `window.WebToApk` object into every page. The methods are avai
 | `clearAppCache()` | Clear the WebView HTTP cache. |
 | `setPullToRefreshEnabled(enabled)` | Toggle the pull-to-refresh gesture at runtime. |
 | `setPullToRefreshRefreshing(refreshing)` | Show/hide the refresh spinner. |
+| `getDownloads()` | The app's downloads as a JSON string: `[{id, filename, mime, bytes, total, status}]`. |
+| `openDownloadedFile(id)` | Open a finished download with the system viewer. |
+| `shareDownloadedFile(id)` | Send a finished download to another app. |
 
-See also the pull-to-refresh hook `WebToApk.onPullToRefresh` above.
+See also the hooks `WebToApk.onPullToRefresh` (above), `WebToApk.onDownloadStarted(id)` and `WebToApk.onDownloadComplete(id)`.
+
+Downloads are handed to `DownloadManager`, so they keep going while the app is backgrounded or even killed. `getDownloads()` is therefore the source of truth: it reports `bytes`/`total` for an in-flight download, so a page can draw its own progress bar, plus a `status` of `pending`, `running`, `paused`, `successful` or `failed` (`total` stays `-1` until the size is known). The two hooks are best-effort — a page-defined callback only exists while the app is alive — so use them as a nudge to re-check `getDownloads()`, and poll it at a sane rate rather than in a tight loop.
 
 `navigator.mediaSession` (metadata, playback state, position, action handlers) is forwarded to the native media notification automatically — no direct calls needed.
 

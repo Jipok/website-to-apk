@@ -11,4 +11,5 @@
     <string name="download_description">Descargando archivo…</string>
     <string name="download_started">Descarga iniciada…</string>
     <string name="download_failed">No se pudo iniciar la descarga.</string>
+    <string name="open_download_failed">No se puede abrir el archivo.</string>
 </resources>

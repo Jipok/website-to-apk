@@ -36,6 +36,8 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebResourceError;
 import androidx.annotation.Nullable;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import android.util.Base64;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -58,6 +60,7 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import android.webkit.DownloadListener;
 import android.app.DownloadManager;
+import android.database.Cursor;
 import android.webkit.URLUtil;
 import android.os.Environment;
 import static android.content.Context.DOWNLOAD_SERVICE;
@@ -104,6 +107,7 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<Intent> fileChooserLauncher; // Image upload
     private ActivityResultLauncher<Intent> saveTarget; // Blob export destination (SAF)
     private OutputStream saveStream;
+    private BroadcastReceiver downloadCompleteReceiver; // Reports finished downloads to the page
     private WebAppInterface webAppInterface;
     private BroadcastReceiver mediaActionReceiver;
     private PermissionRequest currentPermissionRequest;
@@ -317,8 +321,8 @@ public class MainActivity extends AppCompatActivity {
                 // DownloadManager only accepts HTTP(S), constructing a Request with anything else throws
                 String scheme = Uri.parse(url).getScheme();
                 if (!"http".equals(scheme) && !"https".equals(scheme)) {
-                    webview.evaluateJavascript("__webtoapkSaveBlob(" + org.json.JSONObject.quote(url)
-                        + ", " + org.json.JSONObject.quote(mimetype) + ")", null);
+                    webview.evaluateJavascript("__webtoapkSaveBlob(" + JSONObject.quote(url)
+                        + ", " + JSONObject.quote(mimetype) + ")", null);
                     return;
                 }
 
@@ -344,8 +348,10 @@ public class MainActivity extends AppCompatActivity {
                 request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimetype));
 
                 try {
-                    downloadManager.enqueue(request);
+                    long id = downloadManager.enqueue(request);
                     Toast.makeText(getApplicationContext(), R.string.download_started, Toast.LENGTH_LONG).show();
+                    // Tell the page which download this is, so it can ask about its progress
+                    notifyPage("onDownloadStarted", Long.toString(id));
                 } catch (Exception e) {
                     Toast.makeText(getApplicationContext(), R.string.download_failed, Toast.LENGTH_LONG).show();
                     Log.e("WebToApk", "Failed to start download", e);
@@ -353,6 +359,16 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // DownloadManager keeps running without us, so the download may outlive this process:
+        // the event only reaches the page while the app is still alive
+        downloadCompleteReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                notifyPage("onDownloadComplete",
+                    Long.toString(intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)));
+            }
+        };
+        registerReceiver(downloadCompleteReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
 
         if (edgeToEdge) {
             ViewCompat.setOnApplyWindowInsetsListener(mainLayout, (v, windowInsets) -> {
@@ -427,9 +443,54 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /* Report a download event to the page, if it defines the matching WebToApk hook */
+    private void notifyPage(String hook, String argument) {
+        if (webview == null) return;
+        webview.evaluateJavascript(
+            "(function(){try{var f=window.WebToApk&&window.WebToApk." + hook + ";" +
+            "if(typeof f==='function')f(" + argument + ");}catch(e){}})()", null);
+    }
+
+    /* Hand a finished download over to another app. getUriForDownloadedFile only ever grants
+       access to downloads of ours, so no storage permission is involved */
+    private void handOffDownload(String id, String action) {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                long downloadId = Long.parseLong(id);
+                Uri uri = manager.getUriForDownloadedFile(downloadId);
+                if (uri == null) throw new IllegalStateException("download is not finished: " + id);
+                String mime = manager.getMimeTypeForDownloadedFile(downloadId);
+                Intent intent = new Intent(action);
+                if (Intent.ACTION_SEND.equals(action)) {
+                    intent.setType(mime == null ? "*/*" : mime).putExtra(Intent.EXTRA_STREAM, uri);
+                } else {
+                    intent.setDataAndType(uri, mime == null ? "*/*" : mime);
+                }
+                startActivity(intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+            } catch (Exception e) {
+                Log.e("WebToApk", "Cannot hand off download " + id, e);
+                Toast.makeText(MainActivity.this, R.string.open_download_failed, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    /* DownloadManager statuses are numbers, which the page cannot read */
+    private static String downloadStatus(int status) {
+        switch (status) {
+            case DownloadManager.STATUS_PENDING: return "pending";
+            case DownloadManager.STATUS_RUNNING: return "running";
+            case DownloadManager.STATUS_PAUSED: return "paused";
+            case DownloadManager.STATUS_SUCCESSFUL: return "successful";
+            case DownloadManager.STATUS_FAILED: return "failed";
+            default: return "unknown";
+        }
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        unregisterReceiver(downloadCompleteReceiver);
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mediaActionReceiver);
         Intent intent = new Intent(this, MediaPlaybackService.class);
         stopService(intent);
@@ -1179,6 +1240,38 @@ public class MainActivity extends AppCompatActivity {
             if (!ok) {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this, R.string.download_failed, Toast.LENGTH_LONG).show());
             }
+        }
+
+        /* Downloads this app has started. DownloadManager carries them on its own, so this
+           stays the source of truth even when the events above are missed */
+        @JavascriptInterface
+        public String getDownloads() {
+            JSONArray downloads = new JSONArray();
+            DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            try (Cursor cursor = manager.query(new DownloadManager.Query())) {
+                while (cursor != null && cursor.moveToNext()) {
+                    downloads.put(new JSONObject()
+                        .put("id", cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID)))
+                        .put("filename", cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TITLE)))
+                        .put("mime", cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_MEDIA_TYPE)))
+                        .put("bytes", cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)))
+                        .put("total", cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)))
+                        .put("status", downloadStatus(cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)))));
+                }
+            } catch (Exception e) {
+                Log.e("WebToApk", "Cannot query downloads", e);
+            }
+            return downloads.toString();
+        }
+
+        @JavascriptInterface
+        public void openDownloadedFile(String id) {
+            handOffDownload(id, Intent.ACTION_VIEW);
+        }
+
+        @JavascriptInterface
+        public void shareDownloadedFile(String id) {
+            handOffDownload(id, Intent.ACTION_SEND);
         }
 
         @JavascriptInterface

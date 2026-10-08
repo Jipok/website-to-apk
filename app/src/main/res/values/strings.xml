@@ -10,4 +10,5 @@
     <string name="download_description">Downloading file…</string>
     <string name="download_started">Download started…</string>
     <string name="download_failed">Failed to start download.</string>
+    <string name="open_download_failed">Cannot open the file.</string>
 </resources>
