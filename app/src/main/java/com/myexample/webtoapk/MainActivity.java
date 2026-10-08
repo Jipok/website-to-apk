@@ -36,8 +36,10 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebResourceError;
 import androidx.annotation.Nullable;
+import android.util.Base64;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URLConnection;
 import android.webkit.JavascriptInterface;
 import android.content.Context;
@@ -100,6 +102,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean errorOccurred = false; // For WebView after tryAgain
     private ValueCallback<Uri[]> mFilePathCallback;       // Image upload
     private ActivityResultLauncher<Intent> fileChooserLauncher; // Image upload
+    private ActivityResultLauncher<Intent> saveTarget; // Blob export destination (SAF)
+    private OutputStream saveStream;
     private WebAppInterface webAppInterface;
     private BroadcastReceiver mediaActionReceiver;
     private PermissionRequest currentPermissionRequest;
@@ -288,10 +292,36 @@ public class MainActivity extends AppCompatActivity {
             }
         );
 
+        // Blob/data: export. DownloadManager cannot fetch those, so the page streams the bytes to
+        // a destination the user picks with the system file picker (SAF)
+        saveTarget = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null) {
+                    return; // Cancelled, nothing to do
+                }
+                try {
+                    saveStream = getContentResolver().openOutputStream(result.getData().getData());
+                    webview.evaluateJavascript("__webtoapkSendBlob()", null);
+                } catch (Exception e) {
+                    Log.e("WebToApk", "Cannot open save target", e);
+                    Toast.makeText(this, R.string.download_failed, Toast.LENGTH_LONG).show();
+                }
+            }
+        );
+
         // File downloading support
         webview.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+                // DownloadManager only accepts HTTP(S), constructing a Request with anything else throws
+                String scheme = Uri.parse(url).getScheme();
+                if (!"http".equals(scheme) && !"https".equals(scheme)) {
+                    webview.evaluateJavascript("__webtoapkSaveBlob(" + org.json.JSONObject.quote(url)
+                        + ", " + org.json.JSONObject.quote(mimetype) + ")", null);
+                    return;
+                }
+
                 DownloadManager downloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
 
                 // Create a request for the download
@@ -1118,6 +1148,37 @@ public class MainActivity extends AppCompatActivity {
 
         WebAppInterface(Context context) {
             this.context = context;
+        }
+
+        // Blob export: ask for a destination, then receive the bytes in chunks
+        @JavascriptInterface
+        public void pickSaveTarget(String filename, String mime) {
+            new Handler(Looper.getMainLooper()).post(() -> saveTarget.launch(
+                new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType(mime.isEmpty() ? "application/octet-stream" : mime)
+                    .putExtra(Intent.EXTRA_TITLE, filename)
+            ));
+        }
+
+        @JavascriptInterface
+        public void appendChunk(String base64) {
+            try {
+                saveStream.write(Base64.decode(base64, Base64.DEFAULT));
+            } catch (Exception e) {
+                Log.e("WebToApk", "Chunk write failed", e);
+            }
+        }
+
+        @JavascriptInterface
+        public void finishSave(boolean ok) {
+            try {
+                saveStream.close();
+            } catch (Exception ignored) {}
+            saveStream = null;
+            if (!ok) {
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, R.string.download_failed, Toast.LENGTH_LONG).show());
+            }
         }
 
         @JavascriptInterface

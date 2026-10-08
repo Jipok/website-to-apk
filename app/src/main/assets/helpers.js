@@ -249,3 +249,37 @@ if (!window.Notification) {
     });
 
 })();
+
+// --- File export ---------------------------------------------------------
+(function() {
+    const CHUNK = 1 << 20;
+
+    // DownloadListener does not receive the `download` attribute, so remember it on click
+    document.addEventListener('click', (e) => {
+        const a = e.target.closest && e.target.closest('a[download]');
+        if (a) window.__webtoapkDownloadName = a.download;
+    }, true);
+
+    // blob:/data: links cannot go through DownloadManager. The app asks the user for a
+    // destination (SAF), then we stream the bytes to it in chunks to keep memory flat.
+    window.__webtoapkSaveBlob = (url, mime) => {
+        WebToApk.pickSaveTarget(window.__webtoapkDownloadName || 'download', mime);
+        window.__webtoapkSendBlob = async () => {
+            let ok = true;
+            try {
+                const blob = await (await fetch(url)).blob();
+                for (let offset = 0; offset < blob.size; offset += CHUNK) {
+                    const reader = new FileReader();
+                    await new Promise((resolve) => {
+                        reader.onload = resolve;
+                        reader.readAsDataURL(blob.slice(offset, offset + CHUNK));
+                    });
+                    WebToApk.appendChunk(reader.result.split(',')[1]);
+                }
+            } catch (e) {
+                ok = false;
+            }
+            WebToApk.finishSave(ok);
+        };
+    };
+})();
