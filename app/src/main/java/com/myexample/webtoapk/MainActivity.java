@@ -62,15 +62,8 @@ import android.app.PendingIntent;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
-import org.unifiedpush.android.connector.UnifiedPush;
-import static org.unifiedpush.android.connector.ConstantsKt.INSTANCE_DEFAULT;
 import android.content.BroadcastReceiver;
 import android.content.IntentFilter;
-import android.content.SharedPreferences;
-import kotlin.Unit;
-import kotlin.jvm.functions.Function1;
-import org.json.JSONException;
-import org.json.JSONObject;
 import androidx.annotation.NonNull;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.ViewCompat;
@@ -105,7 +98,6 @@ public class MainActivity extends AppCompatActivity {
     private ValueCallback<Uri[]> mFilePathCallback;       // Image upload
     private ActivityResultLauncher<Intent> fileChooserLauncher; // Image upload
     private WebAppInterface webAppInterface;
-    private BroadcastReceiver unifiedPushEndpointReceiver;
     private BroadcastReceiver mediaActionReceiver;
     private PermissionRequest currentPermissionRequest;
     private GeolocationPermissions.Callback geoCallback;
@@ -316,52 +308,6 @@ public class MainActivity extends AppCompatActivity {
         });
 
 
-        // Broadcast receiver to get the endpoint from the PushServiceImpl
-        unifiedPushEndpointReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                // Now we receive all parts of the subscription
-                String endpoint = intent.getStringExtra("endpoint");
-                String p256dh = intent.getStringExtra("p256dh");
-                String auth = intent.getStringExtra("auth");
-
-                Log.d("WebToApk", "Received new UnifiedPush data. Endpoint: " + endpoint);
-
-                // Instead of a simple function call, we now create the full subscription JSON
-                // and pass it to a special function in our shim that will resolve the 'subscribe()' promise.
-                if (endpoint != null && p256dh != null && auth != null && webview != null) {
-                    try {
-                        JSONObject keys = new JSONObject();
-                        // Use the real keys received from the distributor
-                        keys.put("p256dh", p256dh);
-                        keys.put("auth", auth);
-
-                        JSONObject subscription = new JSONObject();
-                        subscription.put("endpoint", endpoint);
-                        subscription.put("expirationTime", JSONObject.NULL);
-                        subscription.put("keys", keys);
-
-                        String subscriptionJson = subscription.toString();
-
-                        webview.post(() -> {
-                            // This JS function is defined in our new shim
-                            String js = "if (typeof window.__shim_onNewEndpoint === 'function') { window.__shim_onNewEndpoint('" + subscriptionJson.replace("'", "\\'") + "'); }";
-                            webview.evaluateJavascript(js, null);
-                        });
-
-                    } catch (JSONException e) {
-                         Log.e("WebToApk", "Failed to create subscription JSON for shim", e);
-                    }
-                }
-            }
-        };
-        // Register the receiver with compatibility for different Android versions
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(unifiedPushEndpointReceiver, new IntentFilter("com.myexample.webtoapk.NEW_ENDPOINT"), RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(unifiedPushEndpointReceiver, new IntentFilter("com.myexample.webtoapk.NEW_ENDPOINT"));
-        }
-
         if (edgeToEdge) {
             ViewCompat.setOnApplyWindowInsetsListener(mainLayout, (v, windowInsets) -> {
                 // Get the insets for system bars in hardware pixels.
@@ -425,46 +371,6 @@ public class MainActivity extends AppCompatActivity {
         LocalBroadcastManager.getInstance(this).registerReceiver(mediaActionReceiver, new IntentFilter(MediaPlaybackService.BROADCAST_MEDIA_ACTION));
     }
 
-    private void registerForUnifiedPush(final String vapidPublicKey) {
-        if (vapidPublicKey == null || vapidPublicKey.isEmpty()) {
-            Log.e("WebToApk", "VAPID public key is null or empty. Cannot register for push.");
-            return;
-        }
-
-        UnifiedPush.tryUseCurrentOrDefaultDistributor(this, new Function1<Boolean, Unit>() {
-            @Override
-            public Unit invoke(Boolean success) {
-                if (success) {
-                    Log.d("WebToApk", "UnifiedPush distributor found, registering...");
-                    UnifiedPush.register(
-                        MainActivity.this,
-                        INSTANCE_DEFAULT,
-                        null,
-                        vapidPublicKey
-                    );
-                } else {
-                    Log.w("WebToApk", "No UnifiedPush distributor found or user cancelled.");
-
-                    // We must run UI and WebView operations on the main thread
-                    new Handler(Looper.getMainLooper()).post(() -> {
-                        // Show an informative dialog to the user
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle(R.string.push_distributor_required_title)
-                            .setMessage(R.string.push_distributor_required_message)
-                            .setPositiveButton(R.string.learn_more, (dialog, which) -> {
-                                // Open the UnifiedPush website for users to find distributors
-                                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://unifiedpush.org/users/distributors/"));
-                                startActivity(browserIntent);
-                            })
-                            .setNegativeButton(android.R.string.cancel, null)
-                            .show();
-                    });
-                }
-                return Unit.INSTANCE;
-            }
-        });
-    }
-
     private void executeMediaActionInWebView(String action) {
         Log.d("WebToApk", "Executing JS for media action: " + action);
         if (webview != null) {
@@ -478,9 +384,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (unifiedPushEndpointReceiver != null) {
-            unregisterReceiver(unifiedPushEndpointReceiver);
-        }
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mediaActionReceiver);
         Intent intent = new Intent(this, MediaPlaybackService.class);
         stopService(intent);
@@ -1257,63 +1160,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-
-        /**
-         * Called by the JS shim to trigger the UnifiedPush registration flow.
-         * @param vapidPublicKey The Base64 URL-encoded VAPID public key from the web app.
-         */
-        @JavascriptInterface
-        public void unifiedPushSubscribe(String vapidPublicKey) {
-            new Handler(Looper.getMainLooper()).post(() -> {
-                Log.d("WebToApk", "JS shim triggered UnifiedPush registration.");
-                MainActivity.this.registerForUnifiedPush(vapidPublicKey);
-            });
-        }
-
-        /**
-         * Called by the JS shim to unsubscribe from a push subscription.
-         * The shim doesn't manage multiple instances, so we use the default.
-         */
-        @JavascriptInterface
-        public void unifiedPushUnregister() {
-            Log.d("WebToApk", "JS shim triggered UnifiedPush un-registration for default instance.");
-            UnifiedPush.unregister(context, INSTANCE_DEFAULT);
-        }
-
-
-        /**
-         * Returns the current subscription object as a JSON string for the shim.
-         * This includes the endpoint and dummy keys expected by the Push API.
-         * Returns an empty string if not subscribed.
-         */
-        @JavascriptInterface
-        public String getUnifiedPushSubscriptionJson() {
-            SharedPreferences prefs = context.getSharedPreferences("unifiedpush", Context.MODE_PRIVATE);
-            String endpoint = prefs.getString("endpoint_" + INSTANCE_DEFAULT, null);
-            String p256dh = prefs.getString("p256dh_" + INSTANCE_DEFAULT, null);
-            String auth = prefs.getString("auth_" + INSTANCE_DEFAULT, null);
-
-            if (endpoint == null || endpoint.isEmpty() || p256dh == null || auth == null) {
-                return "";
-            }
-
-            try {
-                // We construct a JSON object that mimics the standard PushSubscription.toJSON() output.
-                JSONObject keys = new JSONObject();
-                keys.put("p256dh", p256dh);
-                keys.put("auth", auth);
-
-                JSONObject subscription = new JSONObject();
-                subscription.put("endpoint", endpoint);
-                subscription.put("expirationTime", JSONObject.NULL);
-                subscription.put("keys", keys);
-
-                return subscription.toString();
-            } catch (JSONException e) {
-                Log.e("WebToApk", "Failed to create subscription JSON", e);
-                return "";
-            }
-        }
 
         /**
          * Returns the state of the notification permission for the shim.

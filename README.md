@@ -214,10 +214,23 @@ The manifest always references this file, so no extra configuration is needed. U
 
 </details>
 
+<details>
+<summary><b>Notifications & Push</b></summary>
+
+**Local notifications work.** While your page is open it can show real Android notifications through the web `Notification` API (`helpers.js` polyfills `new Notification(...)`, `Notification.requestPermission()` and `Notification.permission` on top of the native bridge), and `navigator.mediaSession` drives the media notification and the lock-screen controls.
+
+**Server push to a closed app does not work, and it is not something this project can fix.** Android WebView has no Service Worker and no Push API (Google marked Web Push in WebView as WONTFIX), so there is no way to wake the app from your server once it is closed.
+
+The project used to bundle [UnifiedPush](https://unifiedpush.org/) to work around this, but it was removed. It required the user to install a separate *distributor* app, disable battery optimisation and often enable autostart (Xiaomi/Oppo/Realme and friends), and even then delivery to a fully closed app was unreliable — too much friction for a zero-config wrapper.
+
+If you need real push, open an issue. An **optional** integration (FCM, HMS or another vendor push) can be added, where each fork registers its own token for its own app with the provider that works in its region (Google, Huawei, ...). That keeps the default build free of any push dependency.
+
+</details>
+
 ## Technical Details
 
 - Target Android API: 33 (Android 13)
-- Minimum Android API: 24 (Android 7.0)
+- Minimum Android API: 26 (Android 8.0)
 - Build tools version: 33.0.2
 - Gradle version: 7.4
 - Required Java version: 17

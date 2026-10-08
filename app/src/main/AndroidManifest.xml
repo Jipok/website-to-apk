@@ -28,12 +28,6 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".PushServiceImpl"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT"/>
-            </intent-filter>
-        </service>
         <service
             android:name=".MediaPlaybackService"
             android:exported="false"
