@@ -7,9 +7,6 @@ build/
 *.jks
 *.keystore
 
-# Local secrets (e.g. Firebase service account used by web-push-demo)
-web-push-demo/firebase_credentials.json
-
 # Built artifacts
 *.apk
 *.aab
@@ -23,6 +20,9 @@ local.properties
 # Generated from `scripts = ...` during apply_config
 app/src/main/assets/userscripts/
 
+# Generated from `site = ...` during apply_config
+app/src/main/assets/site/
+
 # IDE
 *.iml
 .idea/
@@ -30,6 +30,9 @@ app/src/main/assets/userscripts/
 
 # Pi workspace (contains session/auth data)
 .pi-box/
+
+# Agent instructions, kept local only
+AGENTS.md
 
 # Local per-app configs and icons. Uncomment to keep them out of git:
 # confs/

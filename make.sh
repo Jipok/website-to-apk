@@ -202,6 +202,9 @@ apply_config() {
             "scripts")
                 set_userscripts $value
                 ;;
+            "site")
+                set_site "$value"
+                ;;
             *)
                 set_var "$key = $value"
                 ;;
@@ -631,6 +634,34 @@ set_userscripts() {
     if [ ${#removed[@]} -eq 0 ] && [ ${#added[@]} -eq 0 ] && [ ${#updated[@]} -eq 0 ]; then
         return 0
     fi
+}
+
+
+set_site() {
+    local src="$1"
+    local dest="app/src/main/assets/site"
+
+    # Empty value: drop a previously bundled site
+    if [ -z "$src" ]; then
+        if [ -d "$dest" ]; then
+            rm -rf "$dest"
+            log "Bundled site removed"
+        fi
+        return 0
+    fi
+
+    # Relative paths are resolved against the config file location
+    if [ -n "${CONFIG_DIR:-}" ] && [[ "$src" != /* ]]; then
+        src="$CONFIG_DIR/$src"
+    fi
+
+    [ ! -d "$src" ] && error "Site directory not found: $src"
+    [ ! -f "$src/index.html" ] && error "Site directory must contain index.html: $src"
+
+    rm -rf "$dest"
+    mkdir -p "$dest"
+    cp -a "$src/." "$dest/"
+    log "Bundled local site: $src"
 }
 
 

@@ -22,8 +22,6 @@ cd website-to-apk
 ```ini
 id = myapp                          # Application ID (will be com.myapp.webtoapk)
 name = My App Name                  # Display name of the app
-versionCode = 1                     # Android version code (integer, must increase on each release)
-versionName = 1.0                   # Human-readable version shown to users
 mainURL = https://example.com       # Target website URL
 icon = example.png                  # Path to your app icon (PNG format)
 
@@ -105,6 +103,8 @@ Example of some useful scripts:
 ## Additional WebView Options
 The following advanced options can also be configured:
 ```ini
+versionCode = 1                       # Android version code (integer, must increase on each release)
+versionName = 1.0                     # Human-readable version shown to users
 cookies = "key1=value1; key2=value2"  # Cookies for mainURL host
 basicAuth = login:password            # HTTP Basic Auth credentials for mainURL host
 userAgent = "MyCustomUserAgent/1.0"   # Custom UserAgent header
@@ -113,12 +113,15 @@ JSCanOpenWindowsAutomatically = true  # Allow JS to open new windows/popups
 
 DomStorageEnabled = true              # Enable HTML5 DOM storage
 DatabaseEnabled = true                # Enable HTML5 Web SQL Database
+MediaPlaybackRequiresUserGesture = true  # Require a tap before media can play
 SavePassword = true                   # Allow saving passwords in WebView
 AllowFileAccess = true
 AllowFileAccessFromFileURLs = true
 forceLandscapeMode = false            # Lock screen orientation to landscape
+forceDarkTheme = false                # Force dark mode for the website
 
 showDetailsOnErrorScreen = false      # Show connection error details for user
+DebugWebView = false                  # Enable remote debugging via chrome://inspect
 confirmOpenExternalApp = true         # Show confirmation before opening external app
 blockLocalhostRequests = true         # Block requests to 127.0.0.1
 trustUserCA            = false        # Allow app to trust user-installed SSL certs
@@ -197,6 +200,39 @@ See [`confs/ptr-demo/`](confs/ptr-demo/) for a ready-to-build example that switc
 </details>
 
 <details>
+<summary><b>JavaScript API</b></summary>
+
+The app injects a `window.WebToApk` object into every page. The methods are available at any time (a few, such as notifications, additionally require the user's permission).
+
+| Method | Description |
+|---|---|
+| `showShortToast(message)` | Show a short Android toast. |
+| `showLongToast(message)` | Show a long Android toast. |
+| `share(title, text, url)` | Open the system share sheet. |
+| `showNotification(title, message)` | Post a local Android notification. |
+| `requestNotificationPermission()` | Ask for the notification permission. |
+| `hasNotificationPermission()` | `true` if notifications are allowed. |
+| `getNotificationPermissionState()` | `"granted"`, `"denied"` or `"prompt"`. |
+| `clearAppCache()` | Clear the WebView HTTP cache. |
+| `setPullToRefreshEnabled(enabled)` | Toggle the pull-to-refresh gesture at runtime. |
+| `setPullToRefreshRefreshing(refreshing)` | Show/hide the refresh spinner. |
+
+See also the pull-to-refresh hook `WebToApk.onPullToRefresh` above.
+
+`navigator.mediaSession` (metadata, playback state, position, action handlers) is forwarded to the native media notification automatically — no direct calls needed.
+
+`helpers.js` additionally polyfills a few web APIs:
+
+| Global | Description |
+|---|---|
+| `toast(message)` | Alias of `showShortToast`. |
+| `navigator.share(data)` | Web Share API on top of the native share sheet. |
+| `Notification`, `Notification.requestPermission()`, `Notification.permission` | Web Notification API on top of local Android notifications. |
+| `GM_addStyle(css)` | Userscript helper that injects a `<style>` element. |
+
+</details>
+
+<details>
 <summary><b>Bundling Custom CA Certificates</b></summary>
 
 `trustUserCA = true` only trusts CAs the **user installed on the device**. To make the app trust a CA out of the box, bundle it:
@@ -211,6 +247,23 @@ See [`confs/ptr-demo/`](confs/ptr-demo/) for a ready-to-build example that switc
 ```
 
 The manifest always references this file, so no extra configuration is needed. Use a `<domain-config>` instead of `<base-config>` to trust the CA for specific hosts only.
+
+</details>
+
+<details>
+<summary><b>Offline / Bundled Local Site</b></summary>
+
+Instead of a remote `mainURL`, you can bundle a whole folder of HTML/CSS/JS into the APK and have the app open it:
+
+```ini
+site = ./mysite     # Must contain index.html, relative paths are resolved from the config file
+```
+
+`make.sh` copies the folder into the APK and the app opens it instead of `mainURL`. The files are served over a virtual `https://app.local/` origin instead of `file://`, so everything that needs a real origin keeps working: `fetch`, `localStorage`, `sessionStorage`, IndexedDB, ES modules, Web Workers, cookies and the `WebToApk` JavaScript API. The app works with the network completely off.
+
+Notes:
+- `mainURL`, `deeplink`, `allowSubdomains` and `cookies` are ignored while `site` is set.
+- See <code>confs/local-demo</code> for a working example.
 
 </details>
 

@@ -5,6 +5,7 @@ import android.net.http.SslError;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
+import androidx.webkit.WebViewAssetLoader;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.webkit.SslErrorHandler;
@@ -36,6 +37,8 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebResourceError;
 import androidx.annotation.Nullable;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.net.URLConnection;
 import android.webkit.JavascriptInterface;
 import android.content.Context;
 import android.content.ActivityNotFoundException;
@@ -144,6 +147,12 @@ public class MainActivity extends AppCompatActivity {
     boolean cameraEnabled = false;
     boolean microphoneEnabled = false;
 
+    // Local site (config key `site`), served from assets over a virtual https origin
+    private static final String LOCAL_SITE_DOMAIN = "app.local";
+    private static final String LOCAL_SITE_URL = "https://" + LOCAL_SITE_DOMAIN + "/";
+    private static final String LOCAL_SITE_ASSET_DIR = "site";
+    private WebViewAssetLoader assetLoader;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         if (forceDarkTheme) {
@@ -175,6 +184,13 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         mainLayout = findViewById(android.R.id.content);
         parentLayout = (ViewGroup) mainLayout.getParent();
+        assetLoader = new WebViewAssetLoader.Builder()
+            .setDomain(LOCAL_SITE_DOMAIN)
+            .addPathHandler("/", this::handleLocalSiteRequest)
+            .build();
+        if (hasBundledSite()) {
+            mainURL = LOCAL_SITE_URL;
+        }
         userScriptManager = new UserScriptManager(this, mainURL);
 
         // Handle intent
@@ -916,6 +932,12 @@ public class MainActivity extends AppCompatActivity {
                 return new WebResourceResponse("text/plain", "UTF-8", null);
             }
 
+            // Serve the bundled local site (`site = ...`) from assets
+            WebResourceResponse assetResponse = assetLoader.shouldInterceptRequest(request.getUrl());
+            if (assetResponse != null) {
+                return assetResponse;
+            }
+
             return super.shouldInterceptRequest(view, request);
         }
 
@@ -1023,6 +1045,40 @@ public class MainActivity extends AppCompatActivity {
                 }
             }, 2000);
         }
+    }
+
+    /* True when a local site was bundled by `make.sh` (config key `site`) */
+    private boolean hasBundledSite() {
+        try {
+            String[] files = getAssets().list(LOCAL_SITE_ASSET_DIR);
+            return files != null && files.length > 0;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /* Serves assets/site/** at the root of the virtual origin, `/` maps to index.html */
+    private WebResourceResponse handleLocalSiteRequest(String path) {
+        // The loader strips the registered prefix, so `path` comes without the leading slash
+        if (path.contains("..")) {
+            return new WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", null, null);
+        }
+        if (path.isEmpty() || path.endsWith("/")) {
+            path += "index.html";
+        }
+        try {
+            return new WebResourceResponse(mimeTypeOf(path), null,
+                getAssets().open(LOCAL_SITE_ASSET_DIR + "/" + path));
+        } catch (IOException e) {
+            // A null stream would make the WebView report a network error, so send an empty body
+            return new WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", null,
+                new ByteArrayInputStream(new byte[0]));
+        }
+    }
+
+    private static String mimeTypeOf(String path) {
+        String mime = URLConnection.guessContentTypeFromName(path);
+        return mime != null ? mime : "text/plain";
     }
 
     /* Retry Loading the page */

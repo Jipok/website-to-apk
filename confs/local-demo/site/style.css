@@ -1,0 +1,10 @@
+:root { color-scheme: light dark; }
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 24px;
+  background: #12141a;
+  color: #e8eaf0;
+}
+h1 { font-size: 1.4rem; }
+ul { line-height: 1.8; }
