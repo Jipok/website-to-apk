@@ -27,6 +27,10 @@ android {
         targetSdkVersion 33
         versionCode 1
         versionName "1.0"
+
+        // Keep only the locales the app actually ships (values-* in res/).
+        // Drops ~70 unused translations bundled by appcompat/fragment/emoji2.
+        resConfigs "en", "de", "es", "fr", "ru", "zh"
     }
 
     //Successtar Edit
@@ -54,6 +58,7 @@ android {
     buildTypes {
         release {
             minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
