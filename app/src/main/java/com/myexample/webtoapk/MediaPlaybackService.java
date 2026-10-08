@@ -7,13 +7,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
+import android.media.MediaMetadata;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.os.Looper;
-import android.support.v4.media.MediaMetadataCompat;
-import android.support.v4.media.session.MediaSessionCompat;
-import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
 import android.util.Base64;
 import android.media.AudioManager;
@@ -21,11 +20,8 @@ import android.content.BroadcastReceiver;
 import android.content.IntentFilter;
 
 import androidx.annotation.Nullable;
-import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
-import androidx.core.app.NotificationCompat.Action;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
-import androidx.media.app.NotificationCompat.MediaStyle;
 
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -55,7 +51,7 @@ public class MediaPlaybackService extends Service {
 
 
     private static final int NOTIFICATION_ID = 101;
-    private MediaSessionCompat mediaSession;
+    private MediaSession mediaSession;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private BroadcastReceiver becomingNoisyReceiver;
 
@@ -76,18 +72,18 @@ public class MediaPlaybackService extends Service {
     public void onCreate() {
         super.onCreate();
 
-        mediaSession = new MediaSessionCompat(this, "WebToApkMediaSession");
-        mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS |
-                              MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        mediaSession = new MediaSession(this, "WebToApkMediaSession");
+        mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS |
+                              MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
 
         // Set initial state. It must be something other than STATE_NONE.
-        PlaybackStateCompat initialState = new PlaybackStateCompat.Builder()
+        PlaybackState initialState = new PlaybackState.Builder()
                 .setActions(0) // No actions available initially
-                .setState(PlaybackStateCompat.STATE_NONE, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 0)
+                .setState(PlaybackState.STATE_NONE, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 0)
                 .build();
         mediaSession.setPlaybackState(initialState);
 
-        mediaSession.setCallback(new MediaSessionCompat.Callback() {
+        mediaSession.setCallback(new MediaSession.Callback() {
             @Override
             public void onPlay() {
                 sendActionToWebView("play");
@@ -177,10 +173,10 @@ public class MediaPlaybackService extends Service {
     }
 
     private void updateMetadata(String title, String artist, String album, @Nullable String artworkUrl) {
-        MediaMetadataCompat.Builder metadataBuilder = new MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, album);
+        MediaMetadata.Builder metadataBuilder = new MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+            .putString(MediaMetadata.METADATA_KEY_ALBUM, album);
 
         if (artworkUrl != null && !artworkUrl.isEmpty()) {
             try {
@@ -190,7 +186,7 @@ public class MediaPlaybackService extends Service {
                 byte[] decodedBytes = Base64.decode(base64String, Base64.DEFAULT);
                 Bitmap artworkBitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
 
-                metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, artworkBitmap);
+                metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, artworkBitmap);
                 mediaSession.setMetadata(metadataBuilder.build());
                 updateNotification(); // Refresh notification with artwork
             } catch (Exception e) {
@@ -207,8 +203,8 @@ public class MediaPlaybackService extends Service {
     }
 
     private void updatePositionState(double duration, double playbackRate, double position) {
-        PlaybackStateCompat currentState = mediaSession.getController().getPlaybackState();
-        if (currentState == null || currentState.getState() == PlaybackStateCompat.STATE_NONE) {
+        PlaybackState currentState = mediaSession.getController().getPlaybackState();
+        if (currentState == null || currentState.getState() == PlaybackState.STATE_NONE) {
             // Can't set position on a 'none' state. Wait for a play/pause state.
             return;
         }
@@ -218,19 +214,19 @@ public class MediaPlaybackService extends Service {
         float rate = (float) playbackRate;
 
         // Duration is part of MediaMetadata. We need to update it.
-        MediaMetadataCompat currentMetadata = mediaSession.getController().getMetadata();
-        MediaMetadataCompat.Builder metadataBuilder;
+        MediaMetadata currentMetadata = mediaSession.getController().getMetadata();
+        MediaMetadata.Builder metadataBuilder;
         if (currentMetadata == null) {
-            metadataBuilder = new MediaMetadataCompat.Builder();
+            metadataBuilder = new MediaMetadata.Builder();
         } else {
             // Important: build from existing metadata to preserve title, artwork, etc.
-            metadataBuilder = new MediaMetadataCompat.Builder(currentMetadata);
+            metadataBuilder = new MediaMetadata.Builder(currentMetadata);
         }
-        metadataBuilder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, durationMs);
+        metadataBuilder.putLong(MediaMetadata.METADATA_KEY_DURATION, durationMs);
         mediaSession.setMetadata(metadataBuilder.build());
 
         // Position and rate are part of PlaybackState.
-        PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder(currentState);
+        PlaybackState.Builder stateBuilder = new PlaybackState.Builder(currentState);
         stateBuilder.setState(currentState.getState(), positionMs, rate);
         mediaSession.setPlaybackState(stateBuilder.build());
 
@@ -240,33 +236,33 @@ public class MediaPlaybackService extends Service {
     }
 
     private void updatePlaybackState(String stateStr) {
-        PlaybackStateCompat currentState = mediaSession.getController().getPlaybackState();
+        PlaybackState currentState = mediaSession.getController().getPlaybackState();
         if (currentState == null) {
             // Should not happen if initialized in onCreate, but good to be safe.
-            currentState = new PlaybackStateCompat.Builder()
+            currentState = new PlaybackState.Builder()
                 .setActions(0)
-                .setState(PlaybackStateCompat.STATE_NONE, 0, 1.0f)
+                .setState(PlaybackState.STATE_NONE, 0, 1.0f)
                 .build();
         }
 
         int state;
         switch (stateStr) {
             case "playing":
-                state = PlaybackStateCompat.STATE_PLAYING;
+                state = PlaybackState.STATE_PLAYING;
                 break;
             case "paused":
-                state = PlaybackStateCompat.STATE_PAUSED;
+                state = PlaybackState.STATE_PAUSED;
                 break;
             default: // "none" or "stopped"
-                state = PlaybackStateCompat.STATE_STOPPED;
+                state = PlaybackState.STATE_STOPPED;
                 break;
         }
 
-        PlaybackStateCompat.Builder newStateBuilder = new PlaybackStateCompat.Builder(currentState);
-        newStateBuilder.setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f);
+        PlaybackState.Builder newStateBuilder = new PlaybackState.Builder(currentState);
+        newStateBuilder.setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, 1.0f);
         mediaSession.setPlaybackState(newStateBuilder.build());
 
-        if (state == PlaybackStateCompat.STATE_PLAYING || state == PlaybackStateCompat.STATE_PAUSED) {
+        if (state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_PAUSED) {
             // Either playing or paused, show notification and run as foreground
             startForeground(NOTIFICATION_ID, buildNotification());
         } else {
@@ -275,14 +271,14 @@ public class MediaPlaybackService extends Service {
             stopForeground(false);
             NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID);
             // If the state is stopped, the service might no longer be needed.
-            if (state == PlaybackStateCompat.STATE_STOPPED) {
+            if (state == PlaybackState.STATE_STOPPED) {
                  stopSelf();
             }
         }
     }
 
     private void setMediaActionHandlers(String[] actions) {
-        PlaybackStateCompat currentState = mediaSession.getController().getPlaybackState();
+        PlaybackState currentState = mediaSession.getController().getPlaybackState();
          if (currentState == null) return;
         
         long supportedActions = 0;
@@ -290,25 +286,25 @@ public class MediaPlaybackService extends Service {
             for (String action : actions) {
                 switch (action) {
                     case "play":
-                        supportedActions |= PlaybackStateCompat.ACTION_PLAY;
+                        supportedActions |= PlaybackState.ACTION_PLAY;
                         break;
                     case "pause":
-                        supportedActions |= PlaybackStateCompat.ACTION_PAUSE;
+                        supportedActions |= PlaybackState.ACTION_PAUSE;
                         break;
                     case "previoustrack":
-                        supportedActions |= PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
+                        supportedActions |= PlaybackState.ACTION_SKIP_TO_PREVIOUS;
                         break;
                     case "nexttrack":
-                        supportedActions |= PlaybackStateCompat.ACTION_SKIP_TO_NEXT;
+                        supportedActions |= PlaybackState.ACTION_SKIP_TO_NEXT;
                         break;
                 }
             }
         }
-        if ((supportedActions & PlaybackStateCompat.ACTION_PLAY) != 0 && (supportedActions & PlaybackStateCompat.ACTION_PAUSE) != 0) {
-            supportedActions |= PlaybackStateCompat.ACTION_PLAY_PAUSE;
+        if ((supportedActions & PlaybackState.ACTION_PLAY) != 0 && (supportedActions & PlaybackState.ACTION_PAUSE) != 0) {
+            supportedActions |= PlaybackState.ACTION_PLAY_PAUSE;
         }
 
-        PlaybackStateCompat.Builder newStateBuilder = new PlaybackStateCompat.Builder(currentState);
+        PlaybackState.Builder newStateBuilder = new PlaybackState.Builder(currentState);
         newStateBuilder.setActions(supportedActions);
         mediaSession.setPlaybackState(newStateBuilder.build());
 
@@ -320,31 +316,31 @@ public class MediaPlaybackService extends Service {
     // MODIFIED: Fully rewrote the buildNotification method.
     //
     private Notification buildNotification() {
-        MediaMetadataCompat metadata = mediaSession.getController().getMetadata();
-        PlaybackStateCompat playbackState = mediaSession.getController().getPlaybackState();
+        MediaMetadata metadata = mediaSession.getController().getMetadata();
+        PlaybackState playbackState = mediaSession.getController().getPlaybackState();
 
-        if (playbackState == null || (playbackState.getState() != PlaybackStateCompat.STATE_PLAYING && playbackState.getState() != PlaybackStateCompat.STATE_PAUSED)) {
+        if (playbackState == null || (playbackState.getState() != PlaybackState.STATE_PLAYING && playbackState.getState() != PlaybackState.STATE_PAUSED)) {
             // Should not happen if called correctly, but as a safeguard.
             return null;
         }
 
-        boolean isPlaying = playbackState.getState() == PlaybackStateCompat.STATE_PLAYING;
+        boolean isPlaying = playbackState.getState() == PlaybackState.STATE_PLAYING;
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
+        Notification.Builder builder = new Notification.Builder(this, NOTIFICATION_CHANNEL_ID);
         List<Integer> compactActionIndices = new ArrayList<>();
 
         // Action: Previous
-        if ((playbackState.getActions() & PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS) != 0) {
-            builder.addAction(
+        if ((playbackState.getActions() & PlaybackState.ACTION_SKIP_TO_PREVIOUS) != 0) {
+            builder.addAction(new Notification.Action(
                 R.drawable.ic_skip_previous, "Previous",
                 createActionIntent(ACTION_PREVIOUS)
-            );
+            ));
             compactActionIndices.add(compactActionIndices.size());
         }
 
         // Action: Play/Pause
-        if ((playbackState.getActions() & PlaybackStateCompat.ACTION_PLAY_PAUSE) != 0) {
-            builder.addAction(new Action(
+        if ((playbackState.getActions() & PlaybackState.ACTION_PLAY_PAUSE) != 0) {
+            builder.addAction(new Notification.Action(
                 isPlaying ? R.drawable.ic_pause : R.drawable.ic_play_arrow,
                 isPlaying ? "Pause" : "Play",
                 createActionIntent(isPlaying ? ACTION_PAUSE : ACTION_PLAY)
@@ -353,11 +349,11 @@ public class MediaPlaybackService extends Service {
         }
 
         // Action: Next
-        if ((playbackState.getActions() & PlaybackStateCompat.ACTION_SKIP_TO_NEXT) != 0) {
-            builder.addAction(
+        if ((playbackState.getActions() & PlaybackState.ACTION_SKIP_TO_NEXT) != 0) {
+            builder.addAction(new Notification.Action(
                 R.drawable.ic_skip_next, "Next",
                 createActionIntent(ACTION_NEXT)
-            );
+            ));
             compactActionIndices.add(compactActionIndices.size());
         }
 
@@ -379,14 +375,14 @@ public class MediaPlaybackService extends Service {
 
         // --- Build the notification ---
         builder.setSmallIcon(R.mipmap.ic_launcher) // Mandatory small icon
-            .setContentTitle(metadata != null ? metadata.getDescription().getTitle() : "Radio")
-            .setContentText(metadata != null ? metadata.getDescription().getSubtitle() : "...")
-            .setLargeIcon(metadata != null ? metadata.getDescription().getIconBitmap() : null)
+            .setContentTitle(metadata != null ? metadata.getString(MediaMetadata.METADATA_KEY_TITLE) : "Radio")
+            .setContentText(metadata != null ? metadata.getString(MediaMetadata.METADATA_KEY_ARTIST) : "...")
+            .setLargeIcon(metadata != null ? metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART) : null)
             .setContentIntent(contentPendingIntent)
             .setDeleteIntent(deletePendingIntent)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
-            .setStyle(new MediaStyle()
+            .setStyle(new Notification.MediaStyle()
                 .setMediaSession(mediaSession.getSessionToken())
                 // This is the key for lock screen controls
                 .setShowActionsInCompactView(compactIndices)
@@ -400,8 +396,8 @@ public class MediaPlaybackService extends Service {
             return;
         }
 
-        PlaybackStateCompat state = mediaSession.getController().getPlaybackState();
-        if (state.getState() == PlaybackStateCompat.STATE_PLAYING || state.getState() == PlaybackStateCompat.STATE_PAUSED) {
+        PlaybackState state = mediaSession.getController().getPlaybackState();
+        if (state.getState() == PlaybackState.STATE_PLAYING || state.getState() == PlaybackState.STATE_PAUSED) {
             Notification notification = buildNotification();
             if (notification != null) {
                  NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
