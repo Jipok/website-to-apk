@@ -187,6 +187,9 @@ apply_config() {
             "name")
                 rename "$value"
                 ;;
+            "versionCode"|"versionName")
+                set_version "$key" "$value"
+                ;;
             "deeplink")
                 set_deep_link "$value"
                 ;;
@@ -236,6 +239,7 @@ build_artifact() {
     echo -e "Size: ${BLUE}$(du -h "$output" | cut -f1)${NC}"
     echo -e "Package: ${BLUE}com.${appname}.webtoapk${NC}"
     echo -e "App name: ${BLUE}$(grep -o 'app_name">[^<]*' app/src/main/res/values/strings.xml | cut -d'>' -f2)${NC}"
+    echo -e "Version: ${BLUE}$(grep 'versionName' app/build.gradle | cut -d'"' -f2) ($(grep 'versionCode' app/build.gradle | awk '{print $2}'))${NC}"
     echo -e "URL: ${BLUE}$(grep 'String mainURL' app/src/main/java/com/"$appname"/webtoapk/*.java | cut -d'"' -f2)${NC}"
     echo -e "${BOLD}----------------${NC}"
 }
@@ -334,6 +338,38 @@ rename() {
 
         log "Display name changed to: $new_name (${lang_code})"
     done
+}
+
+
+# Set versionCode / versionName in app/build.gradle
+set_version() {
+    local key="$1" value="$2"
+    local build_file="app/build.gradle"
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    grep -qE "^[[:space:]]*$key[[:space:]]" "$build_file" || error "$key not found in $build_file"
+
+    if [ "$key" = "versionCode" ]; then
+        [[ "$value" =~ ^[0-9]+$ ]] || error "versionCode must be an integer, got: '$value'"
+    else
+        # Remove surrounding quotes (double or single) if provided in the config
+        value="${value%\"}"; value="${value#\"}"
+        value="${value%\'}"; value="${value#\'}"
+        value="\"$value\""
+    fi
+
+    awk -v key="$key" -v val="$value" '
+        !done && $1 == key { sub(key ".*", key " " val); done = 1 }
+        { print }
+    ' "$build_file" > "$tmp_file"
+
+    if ! diff -q "$build_file" "$tmp_file" >/dev/null; then
+        try mv "$tmp_file" "$build_file"
+        log "Updated $key to $value"
+    else
+        rm -f "$tmp_file"
+    fi
 }
 
 

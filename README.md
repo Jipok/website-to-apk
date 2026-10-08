@@ -22,6 +22,8 @@ cd website-to-apk
 ```ini
 id = myapp                          # Application ID (will be com.myapp.webtoapk)
 name = My App Name                  # Display name of the app
+versionCode = 1                     # Android version code (integer, must increase on each release)
+versionName = 1.0                   # Human-readable version shown to users
 mainURL = https://example.com       # Target website URL
 icon = example.png                  # Path to your app icon (PNG format)
 
