@@ -1,2 +1,5 @@
 confs/** linguist-vendored=true
 gradle/** linguist-generated=true
+
+# Normalize line endings: store and check out text files as LF.
+* text=auto eol=lf
