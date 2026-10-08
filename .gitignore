@@ -1,3 +1,35 @@
+# Build output
+.gradle/
+.gradle-cache/
+build/
+
+# Signing keys — never commit these
+*.jks
+*.keystore
+
+# Local secrets (e.g. Firebase service account used by web-push-demo)
+web-push-demo/firebase_credentials.json
+
+# Built artifacts
+*.apk
+*.aab
+*.aar
+
+# Tools and JDK downloaded by make.sh
+cmdline-tools/
+jvm/
+local.properties
+
+# Generated from `scripts = ...` during apply_config
+app/src/main/assets/userscripts/
+
+# IDE
 *.iml
-.gradle
-./app/build
+.idea/
+.vscode/
+
+# Pi workspace (contains session/auth data)
+.pi-box/
+
+# Local per-app configs and icons. Uncomment to keep them out of git:
+# confs/
