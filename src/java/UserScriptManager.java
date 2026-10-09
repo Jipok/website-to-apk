@@ -20,6 +20,7 @@ import org.json.JSONObject;
 public class UserScriptManager {
     private List<UserScript> userScripts = new ArrayList<>();
     private Context context;
+    private final String helpersJs;
 
     private static class UserScript {
         String name;
@@ -52,9 +53,10 @@ public class UserScriptManager {
         }
     }
 
-    public UserScriptManager(Context context, String mailURL) {
+    public UserScriptManager(Context context, String mainURL) {
         this.context = context;
-        loadUserScripts(mailURL + "/");
+        this.helpersJs = readAssetFile("helpers.js");
+        loadUserScripts(mainURL + "/");
     }
 
     private void loadUserScripts(String mainUrl) {
@@ -141,7 +143,7 @@ public class UserScriptManager {
 
 
     public void injectScripts(WebView webview, String url) {
-        String helpersJs = readAssetFile("helpers.js");
+        // The shim is read once in the constructor: it never changes at runtime
         webview.evaluateJavascript(helpersJs, null);
 
         for (UserScript script : userScripts) {
