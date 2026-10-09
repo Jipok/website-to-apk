@@ -31,6 +31,9 @@ config.gradle
 
 # Agent instructions, kept local only
 AGENTS.md
+TODO.md
+notes/
+tests/
 
 # Local per-app configs and icons. Uncomment to keep them out of git:
 # confs/
