@@ -56,6 +56,7 @@ import android.widget.TextView;
 import android.app.Activity;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient.FileChooserParams;
+import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import android.webkit.DownloadListener;
@@ -221,6 +222,7 @@ public class MainActivity extends AppCompatActivity {
         webview.setWebChromeClient(new CustomWebChrome());
         webAppInterface = new WebAppInterface(this);
         webview.addJavascriptInterface(webAppInterface, "WebToApk");
+        registerBackCallback();
 
         WebSettings webSettings = webview.getSettings();
         webSettings.setJavaScriptEnabled(JSEnabled);
@@ -500,7 +502,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
-        webview.saveState(outState);
+        // The renderer may be gone: onRenderProcessGone nulls webview while restarting the activity
+        if (webview != null) webview.saveState(outState);
     }
 
     // TODO idk what do with this. rly need?
@@ -1114,25 +1117,35 @@ public class MainActivity extends AppCompatActivity {
 
     boolean doubleBackToExitPressedOnce = false;
 
-    @Override
-    public void onBackPressed() {
-        if (webview.canGoBack()) {
-            webview.goBack();
-        } else {
-            if (doubleBackToExitPressedOnce || !requireDoubleBackToExit) {
-                finish();
-                return;
-            }
-            this.doubleBackToExitPressedOnce = true;
-            Toast.makeText(this, R.string.exit_app, Toast.LENGTH_SHORT).show();
-
-            new Handler().postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    doubleBackToExitPressedOnce = false;
+    // Android 16 does not call onBackPressed for apps targeting 36 (predictive back is on by
+    // default), so the same logic lives in a back callback, which every release dispatches.
+    private void registerBackCallback() {
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (webview == null) {   // renderer gone, the activity is already restarting
+                    finish();
+                    return;
                 }
-            }, 2000);
-        }
+                if (webview.canGoBack()) {
+                    webview.goBack();
+                } else {
+                    if (doubleBackToExitPressedOnce || !requireDoubleBackToExit) {
+                        finish();
+                        return;
+                    }
+                    doubleBackToExitPressedOnce = true;
+                    Toast.makeText(MainActivity.this, R.string.exit_app, Toast.LENGTH_SHORT).show();
+
+                    new Handler().postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            doubleBackToExitPressedOnce = false;
+                        }
+                    }, 2000);
+                }
+            }
+        });
     }
 
     /* True when a local site was bundled by `make.sh` (config key `site`) */
