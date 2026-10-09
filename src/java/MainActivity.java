@@ -1074,6 +1074,14 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onPageStarted(WebView webview, String url, Bitmap favicon) {
             super.onPageStarted(webview, url, favicon);
+            // A navigation that starts while the error screen is up has to take it down: Back from an
+            // error, a deeplink or a reload would otherwise leave the screen over a page that did
+            // load, with onPageFinished skipping its fade and its inset replay because the screen is
+            // still up. Only when it is actually up — an unconditional reset would put the spinner
+            // back and zero the alpha on every ordinary navigation.
+            if (errorLayout != null) {
+                hideErrorScreen();
+            }
             userScriptManager.injectScripts(webview, url);
         }
 
@@ -1084,9 +1092,14 @@ public class MainActivity extends AppCompatActivity {
                 swipeRefresh.setRefreshing(false);
                 uiHandler.removeCallbacks(refreshTimeout);
             }
-            // Без флага errorOccurred у нас будет видно ошибку webview пока идёт анимация после tryAgain
-            if (!errorOccurred) {
+            // While the error screen is up the fade is skipped: without this the WebView's own error
+            // page shows through the animation that follows tryAgain.
+            if (errorLayout == null) {
                 Log.d("WebToApk","Current page: " + url);
+                // The renderer survived a whole document, so the one-restart guard is over: the flag
+                // rides on the intent, which the restarted instance keeps as its own, so leaving it
+                // set would make the *next* unrelated crash close the app instead of restarting it.
+                getIntent().removeExtra(EXTRA_RENDERER_RESTARTED);
                 // The properties live on documentElement, so every navigation starts without them
                 if (insetsJs != null) webview.evaluateJavascript(insetsJs, null);
                 spinner.setVisibility(View.GONE);
@@ -1121,9 +1134,12 @@ public class MainActivity extends AppCompatActivity {
                     case ERROR_UNSUPPORTED_SCHEME:
                         Log.e("WebToApk", "Major error: " + errorCode + " - " + errorDescription + " url: " + request.getUrl());
                         errorOccurred = true;
-                        errorLayout = getLayoutInflater().inflate(R.layout.error, parentLayout, false);
-                        parentLayout.removeView(mainLayout);
-                        parentLayout.addView(errorLayout);
+                        // Reuse the screen: a second failure used to stack another copy on top of it
+                        if (errorLayout == null) {
+                            errorLayout = getLayoutInflater().inflate(R.layout.error, parentLayout, false);
+                            parentLayout.removeView(mainLayout);
+                            parentLayout.addView(errorLayout);
+                        }
                         if (showDetailsOnErrorScreen) {
                             TextView errorTextView = errorLayout.findViewById(R.id.errorText);
                             if (errorTextView != null) {
@@ -1144,7 +1160,11 @@ public class MainActivity extends AppCompatActivity {
         public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
             Log.e("WebToApk", "WebView render process gone! Did crash: " + detail.didCrash());
             if (webview != null) {
-                ((ViewGroup)webview.getParent()).removeView(webview);
+                // The parent can be gone already — the error screen detaches nothing, but the
+                // activity being destroyed does — and a null cast would NPE inside the handler that
+                // is supposed to recover from a crash.
+                ViewGroup parent = (ViewGroup) webview.getParent();
+                if (parent != null) parent.removeView(webview);
                 webview.destroy();
                 webview = null;
             }
@@ -1226,6 +1246,7 @@ public class MainActivity extends AppCompatActivity {
     /* Retry Loading the page */
     public void tryAgain(View v) {
         parentLayout.removeView(errorLayout);
+        errorLayout = null;
         parentLayout.addView(mainLayout);
         webview.setAlpha(0f);
         spinner.setVisibility(View.VISIBLE);
