@@ -732,16 +732,13 @@ public class MainActivity extends AppCompatActivity {
 
             Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("image/*");
+            // A page that does not say what it accepts must not be limited to images
+            intent.setType("*/*");
 
             // Проверяем параметры файлового диалога
             String[] acceptTypes = fileChooserParams.getAcceptTypes();
-            if (acceptTypes.length > 0 && acceptTypes[0] != null && !acceptTypes[0].isEmpty()) {
-                if (acceptTypes[0].contains("image")) {
-                    intent.setType("image/*");
-                } else {
-                    intent.setType("*/*");
-                }
+            if (acceptTypes.length > 0 && acceptTypes[0] != null && acceptTypes[0].contains("image")) {
+                intent.setType("image/*");
             }
 
             // Поддержка множественного выбора
