@@ -581,7 +581,7 @@ public class MainActivity extends AppCompatActivity {
             String msg = consoleMessage.message();
 
             if (src.startsWith("http://") || src.startsWith("https://")) {
-                src = src.substring(8);
+                src = src.replaceFirst("^https?://", "");
                 Log.e("WebToApk", "[" + src + ":" + line + "] " + msg);
             } else {
                 // User scripts colorful
