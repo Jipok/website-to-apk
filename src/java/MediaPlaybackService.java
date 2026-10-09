@@ -21,6 +21,7 @@ import android.content.IntentFilter;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.content.ContextCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import java.util.ArrayList;
@@ -108,7 +109,9 @@ public class MediaPlaybackService extends Service {
 
         becomingNoisyReceiver = new BecomingNoisyReceiver();
         IntentFilter intentFilter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
-        registerReceiver(becomingNoisyReceiver, intentFilter);
+        // Not a protected broadcast, so from targetSdk 34 the export flag is mandatory
+        ContextCompat.registerReceiver(this, becomingNoisyReceiver, intentFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED);
     }
     
 

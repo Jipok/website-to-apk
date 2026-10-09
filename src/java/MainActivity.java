@@ -368,7 +368,12 @@ public class MainActivity extends AppCompatActivity {
                     Long.toString(intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)));
             }
         };
-        registerReceiver(downloadCompleteReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+        // ACTION_DOWNLOAD_COMPLETE is neither a protected broadcast nor sent by the system uid
+        // (DownloadProvider is its own app), so from targetSdk 34 it needs RECEIVER_EXPORTED:
+        // NOT_EXPORTED would silently stop the callback. A forged id is harmless, the page is
+        // documented to re-read getDownloads(), which only ever lists our own downloads.
+        ContextCompat.registerReceiver(this, downloadCompleteReceiver,
+            new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_EXPORTED);
 
         if (edgeToEdge) {
             ViewCompat.setOnApplyWindowInsetsListener(mainLayout, (v, windowInsets) -> {
