@@ -114,6 +114,7 @@ public class MainActivity extends AppCompatActivity {
     private PermissionRequest currentPermissionRequest;
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigin;
+    private String insetsJs; // the last insets script: a new document starts without the properties
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
     private final Runnable refreshTimeout = () -> {
         if (swipeRefresh != null) swipeRefresh.setRefreshing(false);
@@ -417,6 +418,7 @@ public class MainActivity extends AppCompatActivity {
                     top, bottom, left, right
                 );
                 webview.evaluateJavascript(js, null);
+                insetsJs = js;   // onPageFinished replays it for every new document
 
                 return WindowInsetsCompat.CONSUMED;
             });
@@ -1085,6 +1087,8 @@ public class MainActivity extends AppCompatActivity {
             // Без флага errorOccurred у нас будет видно ошибку webview пока идёт анимация после tryAgain
             if (!errorOccurred) {
                 Log.d("WebToApk","Current page: " + url);
+                // The properties live on documentElement, so every navigation starts without them
+                if (insetsJs != null) webview.evaluateJavascript(insetsJs, null);
                 spinner.setVisibility(View.GONE);
                 if (webview.getAlpha() == 0f) {
                     webview.animate().alpha(1f).setDuration(fadeInDuration).start();
