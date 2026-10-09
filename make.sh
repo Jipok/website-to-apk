@@ -123,8 +123,67 @@ set_var() {
 }
 
 
+# The signing key used to live in app/; move it out of the generated tree for old checkouts
+migrate_keystore() {
+    if [ -f app/my-release-key.jks ] && [ ! -f my-release-key.jks ]; then
+        try mv app/my-release-key.jks my-release-key.jks
+        info "Moved the signing key to ./my-release-key.jks"
+    fi
+}
+
+
+# Remembers what the tree was generated for, so that `./make.sh apk` works without a config
+read_generated_config() {
+    local file="config.gradle"
+    appname=$(sed -n 's/^ext\.appId *= *//p' "$file" 2>/dev/null | tr -d "'\"" | cut -d. -f2 | head -n1)
+    appVersionCode=$(sed -n 's/^ext\.appVersionCode *= *//p' "$file" 2>/dev/null | tr -dc '0-9')
+    appVersionName=$(sed -n 's/^ext\.appVersionName *= *//p' "$file" 2>/dev/null | tr -d "'\"")
+    appname="${appname:-myexample}"
+    appVersionCode="${appVersionCode:-1}"
+    appVersionName="${appVersionName:-1.0}"
+}
+
+
+# The application id and the version are read by build.gradle from this generated
+# file, so the tracked build.gradle stays the same for every app.
+write_config_gradle() {
+    local file="config.gradle"
+    local content="ext.appId = 'com.$appname.webtoapk'
+ext.appVersionCode = $appVersionCode
+ext.appVersionName = '$appVersionName'"
+
+    if [ -f "$file" ] && [ "$content" = "$(cat "$file")" ]; then
+        return 0
+    fi
+
+    printf '%s\n' "$content" > "$file"
+}
+
+
+# src/ is the source of truth; app/src is unpacked from it on every apply_config, so a
+# configured tree never accumulates edits and `clean` only has to delete the result.
+sync_sources() {
+    # Java sources live in the package directory of the current application id
+    local pkg="app/src/main/java/com/$appname/webtoapk"
+
+    try rm -rf app/src/main/java app/src/main/res app/src/main/assets app/src/main/AndroidManifest.xml
+    try mkdir -p "$pkg" app/src/main/assets
+
+    try cp -a src/build.gradle src/proguard-rules.pro app/
+    try cp -a src/java/. "$pkg/"
+    try cp -a src/res app/src/main/
+    try cp -a src/assets/. app/src/main/assets/
+    try cp -a src/AndroidManifest.xml app/src/main/
+
+    # The template declares the default package, the config decides the real one
+    if ! grep -q "package com.$appname.webtoapk;" "$pkg/MainActivity.java"; then
+        try "sed -i 's/com\\.[a-zA-Z0-9_]*\\.webtoapk/com.$appname.webtoapk/g' $pkg/*.java"
+    fi
+}
+
+
 merge_config_with_default() {
-    local default_conf="app/default.conf"
+    local default_conf="default.conf"
     local user_conf="$1"
     local merged_conf
     merged_conf=$(mktemp)
@@ -171,6 +230,16 @@ apply_config() {
 
     config_file=$(merge_config_with_default "$config_file")
 
+    # The application id is also the Java package, so it has to be known before the
+    # template is unpacked into app/src
+    local app_id
+    app_id=$(sed -n 's/^[[:space:]]*id[[:space:]]*=[[:space:]]*//p' "$config_file" | head -n1 | tr -d '[:space:]')
+    if [ -n "$app_id" ]; then
+        chid "$app_id"
+    else
+        sync_sources
+    fi
+
     while IFS='=' read -r key value || [ -n "$key" ]; do
         # Skip empty lines and comments
         [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
@@ -182,7 +251,7 @@ apply_config() {
 
         case "$key" in
             "id")
-                chid "$value"
+                # Already applied above, before the sources were unpacked
                 ;;
             "name")
                 rename "$value"
@@ -214,7 +283,10 @@ apply_config() {
 
 
 build_artifact() {
-    [ ! -f "app/my-release-key.jks" ] && error "Keystore file not found. Run './make.sh keygen' first"
+    [ ! -d app/src/main/java ] && error "Sources are not unpacked. Run './make.sh build <config>' first"
+    [ ! -f "my-release-key.jks" ] && error "Keystore file not found. Run './make.sh keygen' first"
+
+    read_generated_config
 
     local ext="$1" task dir
     case "$ext" in
@@ -242,7 +314,7 @@ build_artifact() {
     echo -e "Size: ${BLUE}$(du -h "$output" | cut -f1)${NC}"
     echo -e "Package: ${BLUE}com.${appname}.webtoapk${NC}"
     echo -e "App name: ${BLUE}$(grep -o 'app_name">[^<]*' app/src/main/res/values/strings.xml | cut -d'>' -f2)${NC}"
-    echo -e "Version: ${BLUE}$(grep 'versionName' app/build.gradle | cut -d'"' -f2) ($(grep 'versionCode' app/build.gradle | awk '{print $2}'))${NC}"
+    echo -e "Version: ${BLUE}$appVersionName ($appVersionCode)${NC}"
     echo -e "URL: ${BLUE}$(grep 'String mainURL' app/src/main/java/com/"$appname"/webtoapk/*.java | cut -d'"' -f2)${NC}"
     echo -e "${BOLD}----------------${NC}"
 }
@@ -267,7 +339,7 @@ test() {
 }
 
 keygen() {
-    if [ -f "app/my-release-key.jks" ]; then
+    if [ -f "my-release-key.jks" ]; then
         warn "Keystore already exists"
         read -p "Do you want to replace it? (y/N) " -n 1 -r
         echo
@@ -275,18 +347,17 @@ keygen() {
             info "Cancelled"
             return 1
         fi
-        rm app/my-release-key.jks
+        rm my-release-key.jks
     fi
 
     info "Generating keystore..."
-    try "keytool -genkey -v -keystore app/my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my -storepass '123456' -keypass '123456' -dname '$INFO'"
+    try "keytool -genkey -v -keystore my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my -storepass '123456' -keypass '123456' -dname '$INFO'"
     log "Keystore generated successfully"
 }
 
 clean() {
-    info "Cleaning build files..."
-    try rm -rf app/build .gradle
-    apply_config app/default.conf
+    info "Cleaning generated sources and build files..."
+    try rm -rf app build config.gradle .gradle
     log "Clean completed"
 }
 
@@ -298,21 +369,18 @@ chid() {
         error "Invalid application ID. Use only letters, numbers and underscores, start with a letter"
     fi
 
-    try "find . -type f \( -name '*.gradle' -o -name '*.java' -o -name '*.xml' \) -exec \
-        sed -i 's/com\.\([a-zA-Z0-9_]*\)\.webtoapk/com.$1.webtoapk/g' {} +"
+    if [ "$1" != "$appname" ]; then
+        info "Old name: com.$appname.webtoapk"
+        info "Renaming to: com.$1.webtoapk"
 
-    if [ "$1" = "$appname" ]; then
-        return 0
+        appname="$1"
+        write_config_gradle
+
+        log "Application ID changed successfully"
     fi
 
-    info "Old name: com.$appname.webtoapk"
-    info "Renaming to: com.$1.webtoapk"
-
-    try "mv app/src/main/java/com/$appname app/src/main/java/com/$1"
-
-    appname=$1
-
-    log "Application ID changed successfully"
+    # The template is unpacked into the package directory of the (possibly new) id
+    sync_sources
 }
 
 
@@ -344,35 +412,29 @@ rename() {
 }
 
 
-# Set versionCode / versionName in app/build.gradle
+# Set versionCode / versionName in the generated app/config.gradle
 set_version() {
     local key="$1" value="$2"
-    local build_file="app/build.gradle"
-    local tmp_file
-    tmp_file=$(mktemp)
 
-    grep -qE "^[[:space:]]*$key[[:space:]]" "$build_file" || error "$key not found in $build_file"
-
-    if [ "$key" = "versionCode" ]; then
-        [[ "$value" =~ ^[0-9]+$ ]] || error "versionCode must be an integer, got: '$value'"
-    else
-        # Remove surrounding quotes (double or single) if provided in the config
-        value="${value%\"}"; value="${value#\"}"
-        value="${value%\'}"; value="${value#\'}"
-        value="\"$value\""
-    fi
-
-    awk -v key="$key" -v val="$value" '
-        !done && $1 == key { sub(key ".*", key " " val); done = 1 }
-        { print }
-    ' "$build_file" > "$tmp_file"
-
-    if ! diff -q "$build_file" "$tmp_file" >/dev/null; then
-        try mv "$tmp_file" "$build_file"
-        log "Updated $key to $value"
-    else
-        rm -f "$tmp_file"
-    fi
+    case "$key" in
+        "versionCode")
+            [[ "$value" =~ ^[0-9]+$ ]] || error "versionCode must be an integer, got: '$value'"
+            appVersionCode="$value"
+            write_config_gradle
+            log "Updated versionCode to $value"
+            ;;
+        "versionName")
+            # Remove surrounding quotes (double or single) if provided in the config
+            value="${value%\"}"; value="${value#\"}"
+            value="${value%\'}"; value="${value#\'}"
+            appVersionName="$value"
+            write_config_gradle
+            log "Updated versionName to '$value'"
+            ;;
+        *)
+            error "Unknown version field: $key"
+            ;;
+    esac
 }
 
 
@@ -489,12 +551,11 @@ set_network_security_config() {
 
 set_icon() {
     local icon_path="$@"
-    local default_icon="$PWD/app/example.png"
     local dest_file="app/src/main/res/mipmap/ic_launcher.png"
 
-    # If no icon provided, use default
+    # No icon in the config: sync_sources already unpacked the template icon
     if [ -z "$icon_path" ]; then
-        icon_path="$default_icon"
+        return 0
     fi
 
     # If icon_path is not absolute, prepend CONFIG_DIR
@@ -511,16 +572,9 @@ set_icon() {
         error "Icon must be in PNG format, got: $file_type"
     fi
 
-    # Create destination directory if needed
-    mkdir -p "$(dirname "$dest_file")"
-
     # Check if icon needs to be updated
     if [ -f "$dest_file" ] && cmp -s "$icon_path" "$dest_file"; then
         return 0
-    fi
-
-    if [ -z "$@" ]; then
-        warn "Using example.png for icon"
     fi
 
     # Copy icon
@@ -859,7 +913,8 @@ ORIGINAL_PWD="$PWD"
 try cd "$(dirname "$0")"
 
 export ANDROID_HOME=$PWD/cmdline-tools/
-appname=$(grep -Po '(?<=applicationId "com\.)[^.]*' app/build.gradle)
+migrate_keystore
+read_generated_config
 
 # Set Gradle's cache directory to be local to the project
 export GRADLE_USER_HOME=$PWD/.gradle-cache
@@ -905,10 +960,10 @@ if [ $# -eq 0 ]; then
     echo -e "  ${BLUE}$0 keygen${NC}          - Generate signing key"
     echo -e "  ${BLUE}$0 build${NC} [config]  - Apply configuration and build"
     echo -e "  ${BLUE}$0 test${NC}            - Install and test APK via adb, show logs"
-    echo -e "  ${BLUE}$0 clean${NC}           - Clean build files, reset settings"
+    echo -e "  ${BLUE}$0 clean${NC}          - Remove generated sources and build files"
     echo
-    echo -e "  ${BLUE}$0 apk${NC}             - Build APK without apply_config"
-    echo -e "  ${BLUE}$0 aab${NC}             - Build AAB without apply_config"
+    echo -e "  ${BLUE}$0 apk${NC}             - Build APK from already generated sources"
+    echo -e "  ${BLUE}$0 aab${NC}             - Build AAB from already generated sources"
     echo -e "  ${BLUE}$0 apply_config${NC}    - Apply settings from config file"
 	echo -e "  ${BLUE}$0 get_java${NC}        - Download OpenJDK 17 locally"
     echo -e "  ${BLUE}$0 regradle${NC}        - Reinstall gradle. You don't need it"

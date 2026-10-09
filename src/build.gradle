@@ -17,16 +17,19 @@ allprojects {
 
 apply plugin: 'com.android.application'
 
+// Written by ./make.sh from the applied config, ignored by git
+apply from: '../config.gradle'
+
 android {
-    namespace 'com.myexample.webtoapk'
+    namespace appId
 
     compileSdkVersion 33
     defaultConfig {
-        applicationId "com.myexample.webtoapk"
+        applicationId appId
         minSdkVersion 26
         targetSdkVersion 33
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
 
         // Keep only the locales the app actually ships (values-* in res/).
         // Drops ~70 unused translations bundled by appcompat/fragment/emoji2.
@@ -48,7 +51,7 @@ android {
 
     signingConfigs {
         release {
-            storeFile file("my-release-key.jks")
+            storeFile file("../my-release-key.jks")
             storePassword "123456"
             keyAlias "my"
             keyPassword "123456"
