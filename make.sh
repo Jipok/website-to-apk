@@ -265,6 +265,9 @@ apply_config() {
             "trustUserCA")
                 set_network_security_config "$value"
                 ;;
+            "ca")
+                set_ca $value
+                ;;
             "icon")
                 set_icon "$value"
                 ;;
@@ -521,8 +524,8 @@ set_deep_link() {
 }
 
 # trustUserCA controls whether the device's user-installed CAs are trusted.
-# android:networkSecurityConfig is hardcoded in AndroidManifest.xml, so CAs bundled
-# into res/raw (referenced as <certificates src="@raw/name" />) work out of the box.
+# android:networkSecurityConfig is hardcoded in AndroidManifest.xml, so CAs bundled into
+# res/raw by set_ca() (referenced as <certificates src="@raw/name" />) work out of the box.
 set_network_security_config() {
     local nsc_file="app/src/main/res/xml/network_security_config.xml"
     local enabled="$1"
@@ -546,6 +549,46 @@ set_network_security_config() {
     fi
 
     try mv "$tmp_file" "$nsc_file"
+}
+
+
+# ca = my_root_ca.pem [another_ca.pem] — bundle certificates into res/raw and trust them
+# from the network security config. Relative paths are resolved against the config file.
+# Nothing is deleted here: sync_sources() unpacks a fresh res/ every run, so certificates
+# dropped from the config disappear on their own.
+set_ca() {
+    local nsc_file="app/src/main/res/xml/network_security_config.xml"
+    local raw_dir="app/src/main/res/raw"
+    local src name tmp_file
+    tmp_file=$(mktemp)
+    cp "$nsc_file" "$tmp_file"
+
+    for src in $@; do
+        # Relative paths are resolved against the config file location
+        if [ -n "${CONFIG_DIR:-}" ] && [[ "$src" != /* ]]; then
+            src="$CONFIG_DIR/$src"
+        fi
+        [ ! -f "$src" ] && error "CA file not found: $src"
+
+        # The file name becomes the res/raw resource name, so it must be a valid one
+        name=$(basename "$src")
+        name="${name%.*}"
+        [[ "$name" =~ ^[a-z][a-z0-9_]*$ ]] || error "CA file name must be lowercase letters, digits and underscores: $(basename "$src")"
+
+        mkdir -p "$raw_dir"
+        cp "$src" "$raw_dir/$name.pem"
+        log "Bundled CA certificate: $name.pem"
+
+        # Trust it, unless the template already references it
+        grep -q "@raw/$name" "$tmp_file" && continue
+        sed -i "s#^\([[:space:]]*\)<certificates src=\"system\" />#&\n\1<certificates src=\"@raw/$name\" />#" "$tmp_file"
+    done
+
+    if ! diff -q "$nsc_file" "$tmp_file" >/dev/null; then
+        try mv "$tmp_file" "$nsc_file"
+    else
+        rm -f "$tmp_file"
+    fi
 }
 
 
