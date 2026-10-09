@@ -93,6 +93,9 @@ public class MainActivity extends AppCompatActivity {
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 2;
     private static final int MEDIA_PERMISSION_REQUEST_CODE = 1001;
+    private static final int DOWNLOAD_PERMISSION_REQUEST_CODE = 3;
+    // A download that waits for WRITE_EXTERNAL_STORAGE: {url, userAgent, contentDisposition, mimetype}
+    private String[] pendingDownload;
     private static final String NOTIFICATION_CHANNEL_ID = "web_app_notifications";
     private static final String NOTIFICATION_CHANNEL_NAME = "Web App Notifications";
 
@@ -343,36 +346,16 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
 
-                DownloadManager downloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-
-                // Create a request for the download
-                DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                request.setMimeType(mimetype);
-
-                // Set cookies for the download request, it's important for authorized downloads
-                String cookies = CookieManager.getInstance().getCookie(url);
-                request.addRequestHeader("cookie", cookies);
-                request.addRequestHeader("User-Agent", userAgent);
-
-                // Set download description and title using string resources
-                request.setDescription(getString(R.string.download_description)); // Use string resource
-                request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimetype));
-
-                // Show notification during and after download
-                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-
-                // Set the destination directory for the downloaded file
-                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimetype));
-
-                try {
-                    long id = downloadManager.enqueue(request);
-                    Toast.makeText(getApplicationContext(), R.string.download_started, Toast.LENGTH_LONG).show();
-                    // Tell the page which download this is, so it can ask about its progress
-                    notifyPage("onDownloadStarted", Long.toString(id));
-                } catch (Exception e) {
-                    Toast.makeText(getApplicationContext(), R.string.download_failed, Toast.LENGTH_LONG).show();
-                    Log.e("WebToApk", "Failed to start download", e);
+                // The public Downloads directory needs WRITE_EXTERNAL_STORAGE before API 29
+                if (Build.VERSION.SDK_INT < 29 && ContextCompat.checkSelfPermission(MainActivity.this,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    pendingDownload = new String[]{url, userAgent, contentDisposition, mimetype};
+                    ActivityCompat.requestPermissions(MainActivity.this,
+                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, DOWNLOAD_PERMISSION_REQUEST_CODE);
+                    return;
                 }
+
+                startDownload(url, userAgent, contentDisposition, mimetype);
             }
         });
 
@@ -564,6 +547,41 @@ public class MainActivity extends AppCompatActivity {
     //     }
     // }
 
+    /* DownloadManager writes into the public Downloads directory, so before API 29 the enqueue is
+       preceded by a WRITE_EXTERNAL_STORAGE round-trip (see onRequestPermissionsResult) */
+    private void startDownload(String url, String userAgent, String contentDisposition, String mimetype) {
+        DownloadManager downloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+
+        // Create a request for the download
+        DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
+        request.setMimeType(mimetype);
+
+        // Set cookies for the download request, it's important for authorized downloads
+        String cookies = CookieManager.getInstance().getCookie(url);
+        request.addRequestHeader("cookie", cookies);
+        request.addRequestHeader("User-Agent", userAgent);
+
+        // Set download description and title using string resources
+        request.setDescription(getString(R.string.download_description)); // Use string resource
+        request.setTitle(URLUtil.guessFileName(url, contentDisposition, mimetype));
+
+        // Show notification during and after download
+        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+
+        // Set the destination directory for the downloaded file
+        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, contentDisposition, mimetype));
+
+        try {
+            long id = downloadManager.enqueue(request);
+            Toast.makeText(getApplicationContext(), R.string.download_started, Toast.LENGTH_LONG).show();
+            // Tell the page which download this is, so it can ask about its progress
+            notifyPage("onDownloadStarted", Long.toString(id));
+        } catch (Exception e) {
+            Toast.makeText(getApplicationContext(), R.string.download_failed, Toast.LENGTH_LONG).show();
+            Log.e("WebToApk", "Failed to start download", e);
+        }
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -590,6 +608,16 @@ public class MainActivity extends AppCompatActivity {
                     currentPermissionRequest.deny();
                 }
                 currentPermissionRequest = null;
+            }
+        }
+        // Handle the download that waited for WRITE_EXTERNAL_STORAGE
+        else if (requestCode == DOWNLOAD_PERMISSION_REQUEST_CODE) {
+            String[] download = pendingDownload;
+            pendingDownload = null;
+            if (isGranted && download != null) {
+                startDownload(download[0], download[1], download[2], download[3]);
+            } else {
+                Toast.makeText(getApplicationContext(), R.string.download_failed, Toast.LENGTH_LONG).show();
             }
         }
         // Handle Location (Re-using the ID or creating a new one)
