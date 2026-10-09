@@ -203,13 +203,11 @@ public class MainActivity extends AppCompatActivity {
         userScriptManager = new UserScriptManager(this, mainURL);
 
         // Handle intent
-        Intent intent = getIntent();
-        String action = intent.getAction();
-        Uri data = intent.getData();
-        Log.d("WebToApk", "Action: " + action);
-        Log.d("WebToApk", "Data: " + data);
-        if (Intent.ACTION_VIEW.equals(action) && data != null) {
-            mainURL = data.toString();
+        String deeplinkUrl = urlFromIntent(getIntent());
+        Log.d("WebToApk", "Action: " + getIntent().getAction());
+        Log.d("WebToApk", "Data: " + getIntent().getData());
+        if (deeplinkUrl != null) {
+            mainURL = deeplinkUrl;
         }
 
         webview = findViewById(R.id.webView);
@@ -496,6 +494,28 @@ public class MainActivity extends AppCompatActivity {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mediaActionReceiver);
         Intent intent = new Intent(this, MediaPlaybackService.class);
         stopService(intent);
+    }
+
+    // The URL carried by a VIEW intent, or null when there is none
+    private String urlFromIntent(Intent intent) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) return null;
+        Uri data = intent.getData();
+        return data == null ? null : data.toString();
+    }
+
+    // The activity is singleTop: a deeplink that arrives while it is alive lands here
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String url = urlFromIntent(intent);
+        if (url != null && webview != null) {
+            Log.d("WebToApk", "Deeplink while running: " + url);
+            // Same as onCreate: the deeplinked host has to count as this app's own, or every link
+            // on the page it loads is treated as external
+            mainURL = url;
+            webview.loadUrl(url);
+        }
     }
 
     // Save the state of the WebView (current URL, history, scroll position) during OOM kill
