@@ -119,6 +119,13 @@ public class MainActivity extends AppCompatActivity {
         if (swipeRefresh != null) swipeRefresh.setRefreshing(false);
     };
 
+    // The URL from the config (or the bundled site), kept before a deeplink may replace mainURL:
+    // the cookies and the Basic Auth credentials belong to the site the config describes.
+    private String configuredMainURL;
+
+    // Config surface: ./make.sh writes only between these two markers, so a same-named local
+    // elsewhere in the class cannot be patched by mistake
+    // <webtoapk:config>
     String mainURL = "https://github.com/Jipok";
     boolean requireDoubleBackToExit = true;
     boolean allowSubdomains = true;
@@ -155,6 +162,7 @@ public class MainActivity extends AppCompatActivity {
     boolean geolocationEnabled = false;
     boolean cameraEnabled = false;
     boolean microphoneEnabled = false;
+    // </webtoapk:config>
 
     // Local site (config key `site`), served from assets over a virtual https origin
     private static final String LOCAL_SITE_DOMAIN = "app.local";
@@ -200,6 +208,9 @@ public class MainActivity extends AppCompatActivity {
         if (hasBundledSite()) {
             mainURL = LOCAL_SITE_URL;
         }
+        // Everything below can have mainURL replaced by a deeplink; the config's own URL has to
+        // survive that, or the cookies and the credentials follow whatever host the deeplink named.
+        configuredMainURL = mainURL;
         userScriptManager = new UserScriptManager(this, mainURL);
 
         // Handle intent
@@ -264,7 +275,12 @@ public class MainActivity extends AppCompatActivity {
 
         CookieManager cookieManager = CookieManager.getInstance();
         CookieManager.getInstance().setAcceptThirdPartyCookies(webview, true);
-        cookieManager.setCookie(mainURL, cookies);
+        // The config lists cookies as "key1=value1; key2=value2": setCookie takes one cookie, so
+        // passing the whole list set only the first one and treated the rest as attributes. They
+        // are set for the configured URL, never for the host a deeplink may point at.
+        for (String cookie : cookies.split(";")) {
+            if (!cookie.trim().isEmpty()) cookieManager.setCookie(configuredMainURL, cookie.trim());
+        }
         cookieManager.flush();
 
         // Image upload support
@@ -878,10 +894,11 @@ public class MainActivity extends AppCompatActivity {
                     String login = parts[0];
                     String password = parts[1];
 
-                    // Get main domain from mainURL to verify the host
+                    // The credentials belong to the configured site: mainURL follows a deeplink, and
+                    // answering a challenge from whatever host that named would hand them over
                     String mainDomain = "";
                     try {
-                        mainDomain = Uri.parse(MainActivity.this.mainURL).getHost();
+                        mainDomain = Uri.parse(MainActivity.this.configuredMainURL).getHost();
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
