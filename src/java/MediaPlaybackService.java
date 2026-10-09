@@ -23,13 +23,8 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class MediaPlaybackService extends Service {
     public static final String NOTIFICATION_CHANNEL_ID = "web_app_notifications";
@@ -52,7 +47,6 @@ public class MediaPlaybackService extends Service {
 
     private static final int NOTIFICATION_ID = 101;
     private MediaSession mediaSession;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private BroadcastReceiver becomingNoisyReceiver;
 
     // Inner class to handle the BECOMING_NOISY event
@@ -427,7 +421,6 @@ public class MediaPlaybackService extends Service {
     public void onDestroy() {
         super.onDestroy();
         mediaSession.release();
-        executor.shutdown();
         unregisterReceiver(becomingNoisyReceiver);
     }
     
