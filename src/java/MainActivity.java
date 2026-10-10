@@ -375,42 +375,48 @@ public class MainActivity extends AppCompatActivity {
         ContextCompat.registerReceiver(this, downloadCompleteReceiver,
             new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_EXPORTED);
 
-        if (edgeToEdge) {
-            ViewCompat.setOnApplyWindowInsetsListener(mainLayout, (v, windowInsets) -> {
-                // Get the insets for system bars in hardware pixels.
-                Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+        // API 35+ forces every app edge-to-edge, so the listener is installed even for a config
+        // that never asked for it: that config keeps its old look by padding the content out of
+        // the bars itself. Below 35 the decor already consumed the insets, so they arrive as zero.
+        ViewCompat.setOnApplyWindowInsetsListener(mainLayout, (v, windowInsets) -> {
+            // Get the insets for system bars in hardware pixels.
+            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
 
-                // Get the device's screen density factor.
-                float density = v.getResources().getDisplayMetrics().density;
+            // Get the device's screen density factor.
+            float density = v.getResources().getDisplayMetrics().density;
 
-                // Convert hardware pixels to density-independent CSS pixels.
-                float top = insets.top / density;
-                float bottom = insets.bottom / density;
-                float left = insets.left / density;
-                float right = insets.right / density;
+            // Convert hardware pixels to density-independent CSS pixels.
+            float top = insets.top / density;
+            float bottom = insets.bottom / density;
+            float left = insets.left / density;
+            float right = insets.right / density;
 
-                Log.d("WebToApk", String.format(java.util.Locale.US,
-                    "Insets (CSS px) -> T:%.2f, B:%.2f, L:%.2f, R:%.2f",
-                    top, bottom, left, right
-                ));
+            Log.d("WebToApk", String.format(java.util.Locale.US,
+                "Insets (CSS px) -> T:%.2f, B:%.2f, L:%.2f, R:%.2f",
+                top, bottom, left, right
+            ));
 
-                // Pass insets to WebView via CSS custom properties.
-                // These names are chosen to be close to the standard CSS env() variables.
-                // The web content can then use var(--safe-area-inset-top).
-                String js = String.format(java.util.Locale.US,
-                    "document.documentElement.style.setProperty('--safe-area-inset-top', '%.2fpx');" +
-                    "document.documentElement.style.setProperty('--safe-area-inset-bottom', '%.2fpx');" +
-                    "document.documentElement.style.setProperty('--safe-area-inset-left', '%.2fpx');" +
-                    "document.documentElement.style.setProperty('--safe-area-inset-right', '%.2fpx');" +
-                    "document.dispatchEvent(new CustomEvent('WebToApkInsetsApplied'));",
-                    top, bottom, left, right
-                );
-                webview.evaluateJavascript(js, null);
-                insetsJs = js;   // onPageFinished replays it for every new document
+            // Pass insets to WebView via CSS custom properties.
+            // These names are chosen to be close to the standard CSS env() variables.
+            // The web content can then use var(--safe-area-inset-top).
+            String js = String.format(java.util.Locale.US,
+                "document.documentElement.style.setProperty('--safe-area-inset-top', '%.2fpx');" +
+                "document.documentElement.style.setProperty('--safe-area-inset-bottom', '%.2fpx');" +
+                "document.documentElement.style.setProperty('--safe-area-inset-left', '%.2fpx');" +
+                "document.documentElement.style.setProperty('--safe-area-inset-right', '%.2fpx');" +
+                "document.dispatchEvent(new CustomEvent('WebToApkInsetsApplied'));",
+                top, bottom, left, right
+            );
+            webview.evaluateJavascript(js, null);
+            insetsJs = js;   // onPageFinished replays it for every new document
 
+            if (edgeToEdge) {
                 return WindowInsetsCompat.CONSUMED;
-            });
-        }
+            }
+            // Leave the insets unconsumed so the IME keeps resizing the window as before.
+            v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
+            return windowInsets;
+        });
 
         // TODO check https://stackoverflow.com/questions/18479519/how-to-save-restore-webview-state
         boolean stateRestored = false;
