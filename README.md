@@ -117,7 +117,7 @@ MediaPlaybackRequiresUserGesture = true  # Require a tap before media can play
 SavePassword = true                   # Allow saving passwords in WebView
 AllowFileAccess = true
 AllowFileAccessFromFileURLs = true
-forceLandscapeMode = false            # Lock screen orientation to landscape
+forceLandscapeMode = false            # Lock screen orientation to landscape (Android 15+ ignores it on large screens)
 forceDarkTheme = false                # Force dark mode for the website
 
 showDetailsOnErrorScreen = false      # Show connection error details for user
