@@ -77,6 +77,7 @@ import androidx.annotation.NonNull;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import android.graphics.Color;
 import androidx.core.graphics.Insets;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
@@ -410,6 +411,20 @@ public class MainActivity extends AppCompatActivity {
             webview.evaluateJavascript(js, null);
             insetsJs = js;   // onPageFinished replays it for every new document
 
+            // The icons have to contrast with whatever shows through the bars. With edgeToEdge that
+            // is the page; without it the window background (API 35+ forces the window edge-to-edge
+            // even for a config that never asked for it, and the padding below keeps the content out
+            // of the bars). The system night mode is what the page itself sees through
+            // prefers-color-scheme, so the two agree — except for a site that hard-codes its own
+            // theme, which is exactly the wrapped-page case.
+            if (insets.top > 0 || insets.bottom > 0) {
+                boolean night = (getResources().getConfiguration().uiMode
+                        & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+                WindowInsetsControllerCompat controller =
+                        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+                controller.setAppearanceLightStatusBars(!night);
+                controller.setAppearanceLightNavigationBars(!night);
+            }
             if (edgeToEdge) {
                 return WindowInsetsCompat.CONSUMED;
             }
