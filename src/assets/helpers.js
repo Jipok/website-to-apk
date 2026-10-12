@@ -37,6 +37,155 @@ if (!window.GM_addStyle) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Userscript manager API. Deliberately only what popular scripts actually ask for: storage,
+// metadata, the page window, the clipboard, notifications, tabs and a value-change hook.
+// GM_xmlhttpRequest is absent on purpose: its one real feature is a CORS bypass, and a fetch wrapper
+// cannot provide that — a function that pretends to is worse than a missing one.
+// ---------------------------------------------------------------------------------------------
+
+if (!window.unsafeWindow) {
+    // A userscript is injected into the page context, so the page window *is* the unsafe window.
+    window.unsafeWindow = window;
+}
+
+if (!window.GM_info) {
+    window.GM_info = {
+        script: { name: 'WebToApk userscript', version: '1.0', description: 'Injected by WebToApk', author: '' },
+        scriptHandler: 'WebToApk',
+        version: '1.0',
+    };
+}
+
+if (!window.GM_getValue) {
+    const GM_PREFIX = '__webtoapk_gm__:';
+    const gmListeners = {};
+    let gmNextListenerId = 0;
+
+    const gmRead = key => {
+        try {
+            const raw = localStorage.getItem(GM_PREFIX + key);
+            if (raw === null) return undefined;
+            // Tampermonkey stores JSON so values keep their type; an entry written by something else
+            // is handed back raw instead of being thrown away.
+            try { return JSON.parse(raw); } catch (e) { return raw; }
+        } catch (e) { return undefined; }
+    };
+
+    const gmFire = (key, oldValue, newValue) => {
+        (gmListeners[key] || []).slice().forEach(listener => {
+            try { listener.callback(key, oldValue, newValue, false); } catch (e) { console.error(e); }
+        });
+    };
+
+    window.GM_getValue = function(key, fallback) {
+        const value = gmRead(key);
+        return value === undefined ? fallback : value;
+    };
+
+    window.GM_setValue = function(key, value) {
+        const oldValue = gmRead(key);
+        // `undefined` is not JSON: JSON.stringify returns the value `undefined` (not a string), setItem
+        // turns it into the literally stored string "undefined", and gmRead then hands that raw string
+        // back instead of falling through to the caller's default. null is the JSON notion of "no value".
+        try { localStorage.setItem(GM_PREFIX + key, JSON.stringify(value === undefined ? null : value)); } catch (e) { return; }
+        gmFire(key, oldValue, value);
+    };
+
+    window.GM_deleteValue = function(key) {
+        const oldValue = gmRead(key);
+        try { localStorage.removeItem(GM_PREFIX + key); } catch (e) { return; }
+        gmFire(key, oldValue, undefined);
+    };
+
+    window.GM_listValues = function() {
+        const keys = [];
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.indexOf(GM_PREFIX) === 0) keys.push(key.slice(GM_PREFIX.length));
+            }
+        } catch (e) { /* ignore */ }
+        return keys;
+    };
+
+    // There is one context, not several tabs, so a change always looks local (remote = false).
+    window.GM_addValueChangeListener = function(key, callback) {
+        const id = ++gmNextListenerId;
+        (gmListeners[key] = gmListeners[key] || []).push({ id, callback });
+        return id;
+    };
+
+    window.GM_removeValueChangeListener = function(id) {
+        Object.keys(gmListeners).forEach(key => {
+            gmListeners[key] = gmListeners[key].filter(listener => listener.id !== id);
+        });
+    };
+}
+
+if (!window.GM_setClipboard) {
+    const copyFallback = text => {
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        try { document.execCommand('copy'); } catch (e) { /* ignore */ }
+        document.body.removeChild(area);
+    };
+
+    window.GM_setClipboard = function(text) {
+        const value = String(text == null ? '' : text);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(value).catch(() => copyFallback(value));
+        } else {
+            copyFallback(value);
+        }
+    };
+}
+
+if (!window.GM_addElement) {
+    // GM_addElement(tag, attrs) or GM_addElement(parent, tag, attrs)
+    window.GM_addElement = function(a, b, c) {
+        const parent = typeof a === 'string' ? (document.head || document.body) : a;
+        const tag = typeof a === 'string' ? a : b;
+        const attrs = (typeof a === 'string' ? b : c) || {};
+        const element = document.createElement(tag);
+        Object.keys(attrs).forEach(name => element.setAttribute(name, attrs[name]));
+        if (parent) parent.appendChild(element);
+        return element;
+    };
+}
+
+if (!window.GM_log) {
+    window.GM_log = function() { console.log.apply(console, arguments); };
+}
+
+if (!window.GM_notification) {
+    window.GM_notification = function(details, ondone) {
+        const options = typeof details === 'string' ? { text: details } : (details || {});
+        try {
+            const notification = new Notification(options.title || '', {
+                body: options.text || '',
+                icon: options.image,
+            });
+            const done = typeof options.ondone === 'function' ? options.ondone
+                : (typeof ondone === 'function' ? ondone : null);
+            if (done) notification.onclose = done;
+        } catch (e) { /* ignore */ }
+    };
+}
+
+if (!window.GM_openInTab) {
+    // There is no tab strip: the app decides, and a _blank window.open takes the same external-link
+    // path as a normal target=_blank link.
+    window.GM_openInTab = function(url) {
+        window.open(url, '_blank');
+        return { closed: true, close: function() {} };
+    };
+}
+
 if (!window.toast) {
     window.toast = function(message) {
         WebToApk.showShortToast(message);

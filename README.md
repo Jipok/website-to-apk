@@ -197,6 +197,15 @@ If the hook is missing or returns `false`, the app reloads the page. When the ho
 
 `WebToApk.setPullToRefreshEnabled(false)` can be called from JS to toggle the gesture at runtime.
 
+Note: the gesture is decided by the *document's* scroll position. On a page that scrolls an inner
+element (a typical SPA) the document never scrolls, so it fires wherever you are on the page. That is
+the site's to decide — keep it off and enable it from the scroller's own handler:
+
+```js
+WebToApk.setPullToRefreshEnabled(false);
+scroller.addEventListener('scroll', () => WebToApk.setPullToRefreshEnabled(scroller.scrollTop <= 0));
+```
+
 See [`confs/ptr-demo/`](confs/ptr-demo/) for a ready-to-build example that switches between JS and native control on the fly.
 
 </details>
