@@ -130,6 +130,7 @@ geolocationEnabled     = false        # Allow access to device location (GPS)
 cameraEnabled          = false        # Allow access to the camera for WebRTC or scanning
 microphoneEnabled      = false        # Allow access to the microphone for audio recording or calls
 allowMixedContent      = false        # Allow loading HTTP content on HTTPS sites
+allowSslErrors         = false        # Offer to continue past a TLS error (main page only)
 pullToRefresh          = false        # Enable native pull-to-refresh gesture
 cacheMode              = default      # Or: "no_cache" (always network), "aggressive" (offline-first)
 fadeInDuration         = 400          # Duration(in ms) of WebView fadeIn animation after spinner gone
@@ -251,6 +252,11 @@ ca = my_root_ca.pem     # Relative to the config file, space-separated list is a
 `network_security_config.xml` (which the manifest always references), so nothing else needs to be
 edited. The name must be lowercase (`my_ca.pem`) because it becomes the resource name. The list is
 rebuilt on every build, so removing a certificate from the config removes it from the app.
+
+A certificate error on the main page is **cancelled** by default. `allowSslErrors = true` adds a
+"continue" button to that error page instead, which lets the user through anyway — the same escape
+hatch a browser offers, but it is off unless you ask for it, and it never applies to background
+requests.
 
 </details>
 

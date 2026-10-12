@@ -159,6 +159,8 @@ public class MainActivity extends AppCompatActivity {
     boolean edgeToEdge = false;
     boolean forceDarkTheme = false;
     boolean allowMixedContent = false;
+    // The dialog below lets the user through a broken certificate, so it is opt-in
+    boolean allowSslErrors = false;
     boolean pullToRefresh = false;
     String cacheMode = "default";
     int fadeInDuration = 400;
@@ -921,6 +923,13 @@ public class MainActivity extends AppCompatActivity {
         // Handle SSL issue
         @Override
         public void onReceivedSslError(WebView view, final SslErrorHandler handler, SslError error) {
+            // Cancelling is the only safe default: the dialog below walks the user through a broken
+            // certificate, so it has to be opted into with allowSslErrors.
+            if (!allowSslErrors) {
+                handler.cancel();
+                return;
+            }
+
             String failingUrl = error.getUrl();
             String currentUrl = view.getUrl();
             boolean isMainPage = (currentUrl != null && failingUrl != null && failingUrl.equals(currentUrl));
