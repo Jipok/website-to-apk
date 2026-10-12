@@ -315,3 +315,12 @@ If you need real push, open an issue. An **optional** integration (FCM, HMS or a
 - Internet permission is required and automatically included
 - If you need to support [different Android versions](https://apilevels.com/), edit `build.gradle` accordingly
 - Based on the original work from: https://github.com/successtar/web-to-app  
+
+## Media
+
+The bridge has a media surface — `updateMediaMetadata`, `updateMediaPlaybackState`,
+`updateMediaPositionState` and `setMediaActionHandlers` — which drives the foreground service that
+owns the notification and the lock-screen controls. It is not meant to be called directly: a WebView
+has no `navigator.mediaSession` integration at all, so `helpers.js` defines that standard object and
+forwards it here. A page that uses `navigator.mediaSession` gets working system controls without
+knowing this app exists.
