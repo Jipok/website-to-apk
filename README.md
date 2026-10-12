@@ -83,7 +83,7 @@ scripts = script1*.js script20.js  # Load specific script files
 
 - Scripts can use Tampermonkey/Violentmonkey/etc [`@match`](https://violentmonkey.github.io/api/metadata-block/#match--exclude-match) and [`@run-at`](https://violentmonkey.github.io/api/metadata-block/#run-at) directives, other ignored
 - If no `@match` is specified, the script will run on all pages
-- Only `GM_addStyle` supported from Greasemonkey API
+- The `GM_*` helpers below are injected by `helpers.js`; `GM_xmlhttpRequest` is deliberately absent (its one real feature is a CORS bypass)
 - There are `toast("short message")` function
 - Script console output (console.log/alert/warn) can be monitored using:
 ```bash
@@ -227,14 +227,14 @@ The app injects a `window.WebToApk` object into every page. The methods are avai
 | `clearAppCache()` | Clear the WebView HTTP cache. |
 | `setPullToRefreshEnabled(enabled)` | Toggle the pull-to-refresh gesture at runtime. |
 | `setPullToRefreshRefreshing(refreshing)` | Show/hide the refresh spinner. |
-| `getDownloads()` | The app's downloads as a JSON string: `[{id, filename, mime, bytes, total, status}]`. |
+| `getDownloads()` | The app's downloads as a JSON string: `[{id, url, filename, mime, bytes, total, status}]`. |
 | `removeDownload(id)` | Delete one of the app's downloads — record and file — and return `true` if it went. |
 | `openDownloadedFile(id)` | Open a finished download with the system viewer. |
 | `shareDownloadedFile(id)` | Send a finished download to another app. |
 
-See also the hooks `WebToApk.onPullToRefresh` (above), `WebToApk.onDownloadStarted(id)` and `WebToApk.onDownloadComplete(id)`.
+See also the hooks `WebToApk.onPullToRefresh` (above), `WebToApk.onDownloadStarted(id, url)` and `WebToApk.onDownloadComplete(id)`.
 
-Downloads are handed to `DownloadManager`, so they keep going while the app is backgrounded or even killed. `getDownloads()` is therefore the source of truth: it reports `bytes`/`total` for an in-flight download, so a page can draw its own progress bar, plus a `status` of `pending`, `running`, `paused`, `successful` or `failed` (`total` stays `-1` until the size is known). The two hooks are best-effort — a page-defined callback only exists while the app is alive — so use them as a nudge to re-check `getDownloads()`, and poll it at a sane rate rather than in a tight loop. Downloads are scoped to the app: `getDownloads()` and `removeDownload()` only ever see files this app downloaded, and removing one deletes the file from `Downloads/` — no permission and no dialog are involved. The ids are remembered across restarts, so a page can clean up after itself.
+Downloads are handed to `DownloadManager`, so they keep going while the app is backgrounded or even killed. `getDownloads()` is therefore the source of truth: it reports `bytes`/`total` for an in-flight download, so a page can draw its own progress bar, plus a `status` of `pending`, `running`, `paused`, `successful` or `failed` (`total` stays `-1` until the size is known). The two hooks are best-effort — a page-defined callback only exists while the app is alive — so use them as a nudge to re-check `getDownloads()`, and poll it at a sane rate rather than in a tight loop. Downloads are scoped to the app: `getDownloads()` and `removeDownload()` only ever see files this app downloaded, and removing one deletes the file from `Downloads/` — no permission and no dialog are involved. The ids are remembered across restarts, so a page can clean up after itself. Every entry also carries the `url` the download was started from, and `onDownloadStarted(id, url)` hands it over at start time — that is the only way to tell which id belongs to which request when several run at once, since the hook itself carries nothing but the id.
 
 `navigator.mediaSession` (metadata, playback state, position, action handlers) is forwarded to the native media notification automatically — no direct calls needed.
 
@@ -245,7 +245,7 @@ Downloads are handed to `DownloadManager`, so they keep going while the app is b
 | `toast(message)` | Alias of `showShortToast`. |
 | `navigator.share(data)` | Web Share API on top of the native share sheet. |
 | `Notification`, `Notification.requestPermission()`, `Notification.permission` | Web Notification API on top of local Android notifications. |
-| `GM_addStyle(css)` | Userscript helper that injects a `<style>` element. |
+| `GM_addStyle(css)`, `GM_getValue`/`GM_setValue`/`GM_deleteValue`/`GM_listValues`, `GM_addValueChangeListener`, `GM_setClipboard`, `GM_addElement`, `GM_log`, `GM_notification`, `GM_openInTab`, `GM_info` | The Greasemonkey helpers shipped in `helpers.js`; values live in `localStorage`. `GM_xmlhttpRequest` is not implemented. |
 
 </details>
 
