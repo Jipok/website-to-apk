@@ -693,10 +693,21 @@ public class MainActivity extends AppCompatActivity {
         // Handle Camera/Mic
         if (requestCode == MEDIA_PERMISSION_REQUEST_CODE) {
             if (currentPermissionRequest != null) {
-                if (isGranted) {
-                    currentPermissionRequest.grant(currentPermissionRequest.getResources());
-                } else {
+                // One denied OS permission must not deny the whole request: the page asked for the
+                // camera and/or the microphone, so grant whichever the user allowed and drop the
+                // rest. The OS state is read again rather than correlated with grantResults.
+                List<String> allowed = new ArrayList<>();
+                for (String resource : currentPermissionRequest.getResources()) {
+                    String needed = PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                            ? Manifest.permission.RECORD_AUDIO : Manifest.permission.CAMERA;
+                    if (checkSelfPermission(needed) == PackageManager.PERMISSION_GRANTED) {
+                        allowed.add(resource);
+                    }
+                }
+                if (allowed.isEmpty()) {
                     currentPermissionRequest.deny();
+                } else {
+                    currentPermissionRequest.grant(allowed.toArray(new String[0]));
                 }
                 currentPermissionRequest = null;
             }
