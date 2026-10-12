@@ -514,6 +514,15 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /* The same site, or a subdomain of it in either direction. The dot matters: a bare
+       endsWith() lets evilexample.com pass for example.com, which would hand it the configured
+       Basic Auth credentials. */
+    private static boolean sameSite(String host, String domain) {
+        return host.equals(domain)
+                || host.endsWith("." + domain)
+                || domain.endsWith("." + host);
+    }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -962,8 +971,8 @@ public class MainActivity extends AppCompatActivity {
                     boolean domainIsValid = false;
                     if (mainDomain != null && !mainDomain.isEmpty() && host != null && !host.isEmpty()) {
                         if (MainActivity.this.allowSubdomains) {
-                            // Allow if the host ends with mainDomain (covers subdomains)
-                            domainIsValid = host.endsWith(mainDomain) || mainDomain.endsWith(host);
+                            // Subdomains count in either direction, with a dot boundary
+                            domainIsValid = sameSite(host, mainDomain);
                         } else {
                             domainIsValid = host.equals(mainDomain);
                         }
@@ -1061,7 +1070,7 @@ public class MainActivity extends AppCompatActivity {
                 // Allow:
                 //   youtube.com -> m.youtube.com
                 //   m.youtube.com -> youtube.com
-                isInternalLink = urlDomain.endsWith(mainDomain) || mainDomain.endsWith(urlDomain);
+                isInternalLink = sameSite(urlDomain, mainDomain);
             } else {
                 isInternalLink = urlDomain.equals(mainDomain);
             }
