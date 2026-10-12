@@ -97,6 +97,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int NOTIFICATION_PERMISSION_REQUEST_CODE = 2;
     private static final int MEDIA_PERMISSION_REQUEST_CODE = 1001;
     private static final int DOWNLOAD_PERMISSION_REQUEST_CODE = 3;
+    private static final String EXTRA_RENDERER_RESTARTED = "webtoapk_renderer_restarted";
     // A download that waits for WRITE_EXTERNAL_STORAGE: {url, userAgent, contentDisposition, mimetype}
     private String[] pendingDownload;
     // Downloads are only ever this app's: from API 29 the platform scopes DownloadManager per app,
@@ -1282,8 +1283,18 @@ public class MainActivity extends AppCompatActivity {
                 webview = null;
             }
             Toast.makeText(MainActivity.this, "Recovering from memory kill...", Toast.LENGTH_SHORT).show();
+            // A renderer that dies deterministically would restart the activity forever, so the
+            // restart is only allowed once: the flag rides on the intent, which is what the new
+            // instance receives.
+            if (getIntent().getBooleanExtra(EXTRA_RENDERER_RESTARTED, false)) {
+                Log.e("WebToApk", "Renderer died again, not restarting");
+                finish();
+                return true;
+            }
+            Intent restart = getIntent();
+            restart.putExtra(EXTRA_RENDERER_RESTARTED, true);
             finish();
-            startActivity(getIntent());
+            startActivity(restart);
             return true;
         }
 
