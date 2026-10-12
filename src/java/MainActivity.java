@@ -7,7 +7,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.webkit.WebViewAssetLoader;
 import android.os.Bundle;
-import android.view.KeyEvent;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -17,8 +16,6 @@ import android.widget.ProgressBar;
 import android.widget.Toast;
 import android.os.Handler;
 import android.webkit.WebSettings;
-import android.view.animation.Animation;
-import android.view.animation.AnimationUtils;
 import android.content.Intent;
 import android.net.Uri;
 import android.content.res.Configuration;
@@ -78,17 +75,13 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
-import android.graphics.Color;
 import androidx.core.graphics.Insets;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
-import android.content.BroadcastReceiver;
-import android.content.IntentFilter;
 import android.webkit.PermissionRequest;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Arrays;
 import java.util.Set;
 
 
@@ -932,22 +925,22 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onPermissionRequest(final PermissionRequest request) {
-            // Check if feature is enabled in config
-            // If the site asks for video but cameraEnabled is false -> deny immediately
+            // A resource the config turns off is dropped, but the rest of the request still is: a
+            // page asking for camera and microphone keeps the microphone when the camera is off.
+            List<String> wanted = new ArrayList<>();
             for (String resource : request.getResources()) {
-                if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource) && !cameraEnabled) {
-                    request.deny();
-                    return;
-                }
-                if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) && !microphoneEnabled) {
-                    request.deny();
-                    return;
-                }
+                if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource) && !cameraEnabled) continue;
+                if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) && !microphoneEnabled) continue;
+                wanted.add(resource);
+            }
+            if (wanted.isEmpty()) {
+                request.deny();
+                return;
             }
 
             // Calculate which Android permissions correspond to the requested WebView resources
             List<String> permissionsNeeded = new ArrayList<>();
-            for (String resource : request.getResources()) {
+            for (String resource : wanted) {
                 if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
                     if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                         permissionsNeeded.add(Manifest.permission.CAMERA);
@@ -962,7 +955,7 @@ public class MainActivity extends AppCompatActivity {
 
             if (permissionsNeeded.isEmpty()) {
                 // We already have all OS permissions, grant Web permission immediately
-                request.grant(request.getResources());
+                request.grant(wanted.toArray(new String[0]));
             } else {
                 // We are missing OS permissions. Save the request and ask the user.
                 currentPermissionRequest = request;
@@ -1005,6 +998,8 @@ public class MainActivity extends AppCompatActivity {
 
             final AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
             builder.setMessage(R.string.notification_error_ssl_cert_invalid);
+            // Back or an outside tap must answer the handler too, or the load waits forever
+            builder.setOnCancelListener(dialog -> handler.cancel());
 
             builder.setPositiveButton("continue", new DialogInterface.OnClickListener() {
                 @Override
@@ -1084,6 +1079,7 @@ public class MainActivity extends AppCompatActivity {
                         handler.cancel();
                     }
                 })
+                .setOnCancelListener(dialog -> handler.cancel())
                 .show();
         }
 
@@ -1436,7 +1432,7 @@ public class MainActivity extends AppCompatActivity {
             new Handler(Looper.getMainLooper()).post(() -> saveTarget.launch(
                 new Intent(Intent.ACTION_CREATE_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
-                    .setType(mime.isEmpty() ? "application/octet-stream" : mime)
+                    .setType(mime == null || mime.isEmpty() ? "application/octet-stream" : mime)
                     .putExtra(Intent.EXTRA_TITLE, filename)
             ));
         }

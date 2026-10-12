@@ -9,12 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import android.webkit.WebView;
-import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
-import android.webkit.ConsoleMessage;
-import android.webkit.JavascriptInterface;
 import android.util.Log;
-import org.json.JSONObject;
 
 
 public class UserScriptManager {
