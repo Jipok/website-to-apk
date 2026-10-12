@@ -219,12 +219,13 @@ The app injects a `window.WebToApk` object into every page. The methods are avai
 | `setPullToRefreshEnabled(enabled)` | Toggle the pull-to-refresh gesture at runtime. |
 | `setPullToRefreshRefreshing(refreshing)` | Show/hide the refresh spinner. |
 | `getDownloads()` | The app's downloads as a JSON string: `[{id, filename, mime, bytes, total, status}]`. |
+| `removeDownload(id)` | Delete one of the app's downloads — record and file — and return `true` if it went. |
 | `openDownloadedFile(id)` | Open a finished download with the system viewer. |
 | `shareDownloadedFile(id)` | Send a finished download to another app. |
 
 See also the hooks `WebToApk.onPullToRefresh` (above), `WebToApk.onDownloadStarted(id)` and `WebToApk.onDownloadComplete(id)`.
 
-Downloads are handed to `DownloadManager`, so they keep going while the app is backgrounded or even killed. `getDownloads()` is therefore the source of truth: it reports `bytes`/`total` for an in-flight download, so a page can draw its own progress bar, plus a `status` of `pending`, `running`, `paused`, `successful` or `failed` (`total` stays `-1` until the size is known). The two hooks are best-effort — a page-defined callback only exists while the app is alive — so use them as a nudge to re-check `getDownloads()`, and poll it at a sane rate rather than in a tight loop.
+Downloads are handed to `DownloadManager`, so they keep going while the app is backgrounded or even killed. `getDownloads()` is therefore the source of truth: it reports `bytes`/`total` for an in-flight download, so a page can draw its own progress bar, plus a `status` of `pending`, `running`, `paused`, `successful` or `failed` (`total` stays `-1` until the size is known). The two hooks are best-effort — a page-defined callback only exists while the app is alive — so use them as a nudge to re-check `getDownloads()`, and poll it at a sane rate rather than in a tight loop. Downloads are scoped to the app: `getDownloads()` and `removeDownload()` only ever see files this app downloaded, and removing one deletes the file from `Downloads/` — no permission and no dialog are involved. The ids are remembered across restarts, so a page can clean up after itself.
 
 `navigator.mediaSession` (metadata, playback state, position, action handlers) is forwarded to the native media notification automatically — no direct calls needed.
 

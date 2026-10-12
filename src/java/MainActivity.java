@@ -86,8 +86,10 @@ import android.content.BroadcastReceiver;
 import android.content.IntentFilter;
 import android.webkit.PermissionRequest;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Arrays;
+import java.util.Set;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -97,6 +99,12 @@ public class MainActivity extends AppCompatActivity {
     private static final int DOWNLOAD_PERMISSION_REQUEST_CODE = 3;
     // A download that waits for WRITE_EXTERNAL_STORAGE: {url, userAgent, contentDisposition, mimetype}
     private String[] pendingDownload;
+    // Downloads are only ever this app's: from API 29 the platform scopes DownloadManager per app,
+    // but below that a query returns every download on the device. The ids this app started are
+    // remembered (and persisted), so getDownloads() and removeDownload() cannot see anyone else's.
+    private static final String DOWNLOADS_PREFS = "webtoapk_downloads";
+    private static final String DOWNLOADS_PREFS_KEY = "ids";
+    private final Set<Long> ownDownloads = new HashSet<>();
     private static final String NOTIFICATION_CHANNEL_ID = "web_app_notifications";
     private static final String NOTIFICATION_CHANNEL_NAME = "Web App Notifications";
 
@@ -338,6 +346,7 @@ public class MainActivity extends AppCompatActivity {
         );
 
         // File downloading support
+        loadOwnDownloads();
         webview.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
@@ -472,12 +481,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /* Report a download event to the page, if it defines the matching WebToApk hook */
-    private void notifyPage(String hook, String argument) {
+    /* Report a download event to the page, if it defines the matching WebToApk hook. The arguments
+       are already JS literals: a string is quoted by the caller with JSONObject.quote. */
+    private void notifyPage(String hook, String... arguments) {
         if (webview == null) return;
+        StringBuilder list = new StringBuilder();
+        for (String argument : arguments) {
+            if (list.length() > 0) list.append(',');
+            list.append(argument);
+        }
         webview.evaluateJavascript(
             "(function(){try{var f=window.WebToApk&&window.WebToApk." + hook + ";" +
-            "if(typeof f==='function')f(" + argument + ");}catch(e){}})()", null);
+            "if(typeof f==='function')f(" + list + ");}catch(e){}})()", null);
     }
 
     /* Hand a finished download over to another app. getUriForDownloadedFile only ever grants
@@ -586,6 +601,29 @@ public class MainActivity extends AppCompatActivity {
 
     /* DownloadManager writes into the public Downloads directory, so before API 29 the enqueue is
        preceded by a WRITE_EXTERNAL_STORAGE round-trip (see onRequestPermissionsResult) */
+    private void loadOwnDownloads() {
+        ownDownloads.clear();
+        String stored = getSharedPreferences(DOWNLOADS_PREFS, MODE_PRIVATE)
+                .getString(DOWNLOADS_PREFS_KEY, "");
+        for (String id : stored.split(",")) {
+            try {
+                if (!id.isEmpty()) ownDownloads.add(Long.parseLong(id));
+            } catch (NumberFormatException ignored) {
+                // a corrupt entry must not take the whole list down
+            }
+        }
+    }
+
+    private void saveOwnDownloads() {
+        StringBuilder ids = new StringBuilder();
+        for (long id : ownDownloads) {
+            if (ids.length() > 0) ids.append(',');
+            ids.append(id);
+        }
+        getSharedPreferences(DOWNLOADS_PREFS, MODE_PRIVATE).edit()
+                .putString(DOWNLOADS_PREFS_KEY, ids.toString()).apply();
+    }
+
     private void startDownload(String url, String userAgent, String contentDisposition, String mimetype) {
         DownloadManager downloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
 
@@ -610,9 +648,12 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             long id = downloadManager.enqueue(request);
+            ownDownloads.add(id);
+            saveOwnDownloads();
             Toast.makeText(getApplicationContext(), R.string.download_started, Toast.LENGTH_LONG).show();
-            // Tell the page which download this is, so it can ask about its progress
-            notifyPage("onDownloadStarted", Long.toString(id));
+            // Tell the page which download this is and where it came from, so it can ask about
+            // its progress and tie the id back to the request it started
+            notifyPage("onDownloadStarted", Long.toString(id), JSONObject.quote(url));
         } catch (Exception e) {
             Toast.makeText(getApplicationContext(), R.string.download_failed, Toast.LENGTH_LONG).show();
             Log.e("WebToApk", "Failed to start download", e);
@@ -1394,8 +1435,12 @@ public class MainActivity extends AppCompatActivity {
             DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
             try (Cursor cursor = manager.query(new DownloadManager.Query())) {
                 while (cursor != null && cursor.moveToNext()) {
+                    // On API < 29 the cursor holds every download on the device, not just ours
+                    long downloadId = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID));
+                    if (!ownDownloads.contains(downloadId)) continue;
                     downloads.put(new JSONObject()
-                        .put("id", cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID)))
+                        .put("id", downloadId)
+                        .put("url", cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_URI)))
                         .put("filename", cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TITLE)))
                         .put("mime", cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_MEDIA_TYPE)))
                         .put("bytes", cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)))
@@ -1416,6 +1461,38 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void shareDownloadedFile(String id) {
             handOffDownload(id, Intent.ACTION_SEND);
+        }
+
+        /**
+         * Deletes a download this app started, together with the file it wrote into Downloads/.
+         * No permission and no dialog are involved, which is why the id has to be one of ours: on
+         * API < 29 DownloadManager is not scoped per app, so an arbitrary id could be someone
+         * else's download.
+         */
+        @JavascriptInterface
+        public boolean removeDownload(String id) {
+            long downloadId;
+            try {
+                downloadId = Long.parseLong(id);
+            } catch (NumberFormatException e) {
+                return false;
+            }
+            if (!ownDownloads.contains(downloadId)) {
+                Log.w("WebToApk", "Not removing a download this app did not start: " + id);
+                return false;
+            }
+            try {
+                DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                boolean removed = manager.remove(downloadId) > 0;
+                if (removed) {
+                    ownDownloads.remove(downloadId);
+                    saveOwnDownloads();
+                }
+                return removed;
+            } catch (Exception e) {
+                Log.e("WebToApk", "Cannot remove download " + id, e);
+                return false;
+            }
         }
 
         @JavascriptInterface
