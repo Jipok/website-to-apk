@@ -337,6 +337,7 @@ public class MainActivity extends AppCompatActivity {
                     return; // Cancelled, nothing to do
                 }
                 try {
+                    closeSaveStream();   // a second save must not leak the first stream
                     saveStream = getContentResolver().openOutputStream(result.getData().getData());
                     webview.evaluateJavascript("__webtoapkSendBlob()", null);
                 } catch (Exception e) {
@@ -613,6 +614,17 @@ public class MainActivity extends AppCompatActivity {
                 // a corrupt entry must not take the whole list down
             }
         }
+    }
+
+    // The blob export writes into a document the user picked: close whatever a previous save left
+    // open before taking a new one, so a second save cannot leak the first stream.
+    private void closeSaveStream() {
+        try {
+            if (saveStream != null) saveStream.close();
+        } catch (IOException e) {
+            Log.e("WebToApk", "Cannot close the save stream", e);
+        }
+        saveStream = null;
     }
 
     private void saveOwnDownloads() {
@@ -1430,7 +1442,7 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void finishSave(boolean ok) {
             try {
-                saveStream.close();
+                closeSaveStream();
             } catch (Exception ignored) {}
             saveStream = null;
             if (!ok) {
