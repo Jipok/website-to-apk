@@ -282,6 +282,9 @@ apply_config() {
                 ;;
         esac
     done < <(sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]]\+#.*//' "$config_file")
+
+    # The merged config is a temp file (defaults + the user's, so it can hold basicAuth and cookies)
+    rm -f "$config_file"
 }
 
 
