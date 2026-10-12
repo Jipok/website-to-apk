@@ -36,10 +36,18 @@ import androidx.annotation.Nullable;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import android.util.Base64;
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.net.URLConnection;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import android.webkit.JavascriptInterface;
 import android.content.Context;
 import android.content.ActivityNotFoundException;
@@ -99,6 +107,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String DOWNLOADS_PREFS = "webtoapk_downloads";
     private static final String DOWNLOADS_PREFS_KEY = "ids";
     private final Set<Long> ownDownloads = new HashSet<>();
+    // In-flight bridge requests, so httpAbort can cancel one
+    private final Map<String, HttpURLConnection> httpRequests = new ConcurrentHashMap<>();
     private static final String NOTIFICATION_CHANNEL_ID = "web_app_notifications";
     private static final String NOTIFICATION_CHANNEL_NAME = "Web App Notifications";
 
@@ -512,6 +522,24 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, R.string.open_download_failed, Toast.LENGTH_LONG).show();
             }
         });
+    }
+
+    /* A page could ask the bridge for gigabytes: read at most this much and say so */
+    private static final int MAX_HTTP_BODY_CHARS = 10 * 1024 * 1024;
+
+    /* The addresses blockLocalhostRequests refuses — in shouldInterceptRequest and in the bridge */
+    private static boolean isLocalhost(String host) {
+        return "127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host)
+                || "::1".equals(host) || "0:0:0:0:0:0:0:1".equals(host);
+    }
+
+    /* The bridge answers with a JSON object: a failure is an `error` field, not an exception */
+    private static String errorJson(String message) {
+        try {
+            return new JSONObject().put("error", message).toString();
+        } catch (Exception e) {
+            return "{\"error\":\"request failed\"}";
+        }
     }
 
     /* DownloadManager statuses are numbers, which the page cannot read */
@@ -1189,7 +1217,7 @@ public class MainActivity extends AppCompatActivity {
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             String host = request.getUrl().getHost();
 
-            if (blockLocalhostRequests && ("127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host) || "::1".equals(host) || "0:0:0:0:0:0:0:1".equals(host))) {
+            if (blockLocalhostRequests && isLocalhost(host)) {
                 Log.d("WebToApk", "Blocked access to localhost resource: " + request.getUrl().toString());
                 // Empty answer
                 return new WebResourceResponse("text/plain", "UTF-8", null);
@@ -1522,6 +1550,110 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception e) {
                 Log.e("WebToApk", "Cannot remove download " + id, e);
                 return false;
+            }
+        }
+
+        /**
+         * A request for the page, off the JavaBridge thread: the answer arrives later as
+         * window.__webtoapkHttpDone(id, json). HttpURLConnection never touches the WebView's cookie
+         * jar, so this is cookie-less by construction — that is the point: it is the CORS bypass
+         * behind GM_xmlhttpRequest. localhost is refused here exactly like in shouldInterceptRequest.
+         */
+        @JavascriptInterface
+        public void httpRequest(final String id, final String method, final String url,
+                                final String headersJson, final String body) {
+            Uri target = Uri.parse(url == null ? "" : url);
+            String scheme = target.getScheme();
+            if (!"http".equals(scheme) && !"https".equals(scheme)) {
+                answer(id, errorJson("only http and https are allowed"));
+                return;
+            }
+            if (blockLocalhostRequests && isLocalhost(target.getHost())) {
+                answer(id, errorJson("localhost is blocked"));
+                return;
+            }
+            new Thread(() -> {
+                try {
+                    answer(id, performRequest(id, method, target.toString(), headersJson, body));
+                } catch (Exception e) {
+                    Log.e("WebToApk", "httpRequest failed: " + url, e);
+                    answer(id, errorJson(String.valueOf(e)));
+                }
+            }, "webtoapk-http").start();
+        }
+
+        /** Cancels a request; a late answer is dropped by the page's own bookkeeping */
+        @JavascriptInterface
+        public void httpAbort(String id) {
+            HttpURLConnection connection = httpRequests.remove(id);
+            if (connection != null) connection.disconnect();
+        }
+
+        /* Hand the answer back on the main thread: evaluateJavascript may not run on another one */
+        private void answer(String id, String json) {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                if (webview != null) {
+                    webview.evaluateJavascript("window.__webtoapkHttpDone&&window.__webtoapkHttpDone("
+                        + JSONObject.quote(id) + "," + JSONObject.quote(json) + ")", null);
+                }
+            });
+        }
+
+        /* The blocking part, on the request's own thread */
+        private String performRequest(String id, String method, String url, String headersJson, String body) throws Exception {
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            httpRequests.put(id, connection);
+            try {
+                connection.setConnectTimeout(15000);
+                connection.setReadTimeout(20000);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestMethod(method == null || method.isEmpty() ? "GET" : method);
+                if (headersJson != null && !headersJson.isEmpty()) {
+                    JSONObject headers = new JSONObject(headersJson);
+                    for (Iterator<String> names = headers.keys(); names.hasNext(); ) {
+                        String name = names.next();
+                        connection.setRequestProperty(name, headers.getString(name));
+                    }
+                }
+                if (body != null && !body.isEmpty()) {
+                    connection.setDoOutput(true);
+                    try (OutputStream out = connection.getOutputStream()) {
+                        out.write(body.getBytes("UTF-8"));
+                    }
+                }
+
+                int status = connection.getResponseCode();
+                JSONObject headers = new JSONObject();
+                for (Map.Entry<String, List<String>> entry : connection.getHeaderFields().entrySet()) {
+                    if (entry.getKey() != null && entry.getValue() != null) {
+                        headers.put(entry.getKey(), String.join(", ", entry.getValue()));
+                    }
+                }
+                // 4xx/5xx throw on getInputStream: their body lives on the error stream
+                InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+                StringBuilder text = new StringBuilder();
+                if (stream != null) {
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, "UTF-8"))) {
+                        char[] buffer = new char[8192];
+                        int read;
+                        while ((read = reader.read(buffer)) > 0) {
+                            if (text.length() + read > MAX_HTTP_BODY_CHARS) {
+                                text.append(buffer, 0, Math.max(0, MAX_HTTP_BODY_CHARS - text.length()));
+                                text.append("\n[body truncated]");
+                                break;
+                            }
+                            text.append(buffer, 0, read);
+                        }
+                    }
+                }
+                return new JSONObject()
+                    .put("status", status)
+                    .put("headers", headers)
+                    .put("body", text.toString())
+                    .toString();
+            } finally {
+                httpRequests.remove(id);
+                connection.disconnect();
             }
         }
 

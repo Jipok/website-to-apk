@@ -40,8 +40,53 @@ if (!window.GM_addStyle) {
 // ---------------------------------------------------------------------------------------------
 // Userscript manager API. Deliberately only what popular scripts actually ask for: storage,
 // metadata, the page window, the clipboard, notifications, tabs and a value-change hook.
-// GM_xmlhttpRequest is absent on purpose: its one real feature is a CORS bypass, and a fetch wrapper
-// cannot provide that — a function that pretends to is worse than a missing one.
+// GM_xmlhttpRequest is the one request API, and its real feature is the CORS bypass, so it goes
+// through the native bridge: cookie-less by construction, text-only, and asynchronous — the native
+// call returns at once and the answer arrives later as window.__webtoapkHttpDone(id, json).
+// responseType and onprogress are not implemented; a script that needs them must not use this.
+// ---------------------------------------------------------------------------------------------
+
+if (!window.GM_xmlhttpRequest) {
+    const gmPending = new Map();
+    let gmNextId = 1;
+
+    // The native side calls this back with the whole answer, on the page's thread
+    window.__webtoapkHttpDone = function(id, json) {
+        const details = gmPending.get(id);
+        if (!details) return; // aborted, or a second answer
+        gmPending.delete(id);
+        let answer;
+        try { answer = JSON.parse(json); } catch (e) { answer = { error: String(e) }; }
+        if (answer.error) {
+            if (typeof details.onerror === 'function') details.onerror({ error: answer.error, status: 0, responseText: '' });
+            else console.error('GM_xmlhttpRequest:', answer.error);
+            return;
+        }
+        const out = {
+            status: answer.status,
+            statusText: '',
+            responseText: answer.body || '',
+            responseHeaders: Object.keys(answer.headers || {})
+                .map((name) => name + ': ' + answer.headers[name]).join('\r\n'),
+            finalUrl: details.url || ''
+        };
+        if (details.responseType === 'json') { try { out.response = JSON.parse(out.responseText); } catch (e) {} }
+        if (typeof details.onload === 'function') details.onload(out);
+    };
+
+    window.GM_xmlhttpRequest = function(details) {
+        const d = details || {};
+        const id = String(gmNextId++);
+        gmPending.set(id, d);
+        window.WebToApk.httpRequest(id, String(d.method || 'GET').toUpperCase(), String(d.url || ''),
+            JSON.stringify(d.headers || {}), d.data == null ? '' : String(d.data));
+        return {
+            abort: function() {
+                if (gmPending.delete(id)) window.WebToApk.httpAbort(id);
+            }
+        };
+    };
+}
 // ---------------------------------------------------------------------------------------------
 
 if (!window.unsafeWindow) {

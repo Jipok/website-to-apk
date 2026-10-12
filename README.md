@@ -83,7 +83,7 @@ scripts = script1*.js script20.js  # Load specific script files
 
 - Scripts can use Tampermonkey/Violentmonkey/etc [`@match`](https://violentmonkey.github.io/api/metadata-block/#match--exclude-match) and [`@run-at`](https://violentmonkey.github.io/api/metadata-block/#run-at) directives, other ignored
 - If no `@match` is specified, the script will run on all pages
-- The `GM_*` helpers below are injected by `helpers.js`; `GM_xmlhttpRequest` is deliberately absent (its one real feature is a CORS bypass)
+- The `GM_*` helpers below are injected by `helpers.js`
 - There are `toast("short message")` function
 - Script console output (console.log/alert/warn) can be monitored using:
 ```bash
@@ -245,7 +245,7 @@ Downloads are handed to `DownloadManager`, so they keep going while the app is b
 | `toast(message)` | Alias of `showShortToast`. |
 | `navigator.share(data)` | Web Share API on top of the native share sheet. |
 | `Notification`, `Notification.requestPermission()`, `Notification.permission` | Web Notification API on top of local Android notifications. |
-| `GM_addStyle(css)`, `GM_getValue`/`GM_setValue`/`GM_deleteValue`/`GM_listValues`, `GM_addValueChangeListener`, `GM_setClipboard`, `GM_addElement`, `GM_log`, `GM_notification`, `GM_openInTab`, `GM_info` | The Greasemonkey helpers shipped in `helpers.js`; values live in `localStorage`. `GM_xmlhttpRequest` is not implemented. |
+| `GM_addStyle(css)`, `GM_getValue`/`GM_setValue`/`GM_deleteValue`/`GM_listValues`, `GM_addValueChangeListener`, `GM_setClipboard`, `GM_addElement`, `GM_log`, `GM_notification`, `GM_openInTab`, `GM_info`, `GM_xmlhttpRequest` | The Greasemonkey helpers shipped in `helpers.js`; values live in `localStorage`. |
 
 </details>
 
