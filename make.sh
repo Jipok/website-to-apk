@@ -384,6 +384,11 @@ chid() {
 }
 
 
+# XML text escaping, for values that end up inside strings.xml
+xml_escape() {
+    sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
 rename() {
     local new_name="$*"
 
@@ -398,7 +403,8 @@ rename() {
             continue
         fi
 
-        escaped_name=$(echo "$new_name" | sed 's/[\/&]/\\&/g')
+        # The name lands in XML text, so escape it for XML first and for the sed replacement second
+        escaped_name=$(printf '%s' "$new_name" | xml_escape | sed 's/[\/&]/\\&/g')
         try sed -i "s|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">$escaped_name</string>|" "$xml_file"
 
         # Получаем код языка из пути файла
