@@ -345,16 +345,10 @@ test() {
 }
 
 keygen() {
-    if [ -f "my-release-key.jks" ]; then
-        warn "Keystore already exists"
-        read -p "Do you want to replace it? (y/N) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            info "Cancelled"
-            return 1
-        fi
-        rm my-release-key.jks
-    fi
+    # Never replace an existing key. It signs every published build, and a lost key cannot be
+    # replaced for updates: a new one means a new package identity. Delete it by hand if you really
+    # want a new one.
+    [ -f "my-release-key.jks" ] && error "my-release-key.jks already exists - delete it yourself if you really want a new one"
 
     info "Generating keystore..."
     try "keytool -genkey -v -keystore my-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias my -storepass '123456' -keypass '123456' -dname '$INFO'"
