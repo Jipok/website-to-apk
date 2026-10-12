@@ -1,6 +1,7 @@
 package com.myexample.webtoapk;
 
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
@@ -66,6 +67,12 @@ public class MediaPlaybackService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+
+        // The service is START_STICKY: it can come back after the process died, without the activity
+        // ever running, and a notification posted to a channel that does not exist is dropped.
+        NotificationManagerCompat.from(this).createNotificationChannel(new NotificationChannel(
+                NOTIFICATION_CHANNEL_ID, "Web App Notifications",
+                NotificationManagerCompat.IMPORTANCE_DEFAULT));
 
         mediaSession = new MediaSession(this, "WebToApkMediaSession");
         mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS |
