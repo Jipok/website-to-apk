@@ -107,7 +107,8 @@ public class MainActivity extends AppCompatActivity {
     // remembered (and persisted), so getDownloads() and removeDownload() cannot see anyone else's.
     private static final String DOWNLOADS_PREFS = "webtoapk_downloads";
     private static final String DOWNLOADS_PREFS_KEY = "ids";
-    private final Set<Long> ownDownloads = new HashSet<>();
+    // Read from the JavaBridge thread (getDownloads/removeDownload), written from the main one
+    private final Set<Long> ownDownloads = ConcurrentHashMap.newKeySet();
     // In-flight bridge requests, so httpAbort can cancel one
     private final Map<String, HttpURLConnection> httpRequests = new ConcurrentHashMap<>();
 
@@ -122,7 +123,8 @@ public class MainActivity extends AppCompatActivity {
     private ValueCallback<Uri[]> mFilePathCallback;       // Image upload
     private ActivityResultLauncher<Intent> fileChooserLauncher; // Image upload
     private ActivityResultLauncher<Intent> saveTarget; // Blob export destination (SAF)
-    private OutputStream saveStream;
+    // Written on main (the SAF picker) and used from the JavaBridge thread (appendChunk)
+    private volatile OutputStream saveStream;
     private BroadcastReceiver downloadCompleteReceiver; // Reports finished downloads to the page
     private WebAppInterface webAppInterface;
     private BroadcastReceiver mediaActionReceiver;
@@ -1577,12 +1579,16 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public String getDownloads() {
             JSONArray downloads = new JSONArray();
+            // The filter belongs in the query: on API < 29 an unfiltered one returns every download
+            // on the device, and setFilterById is exact as well as faster than the scan
+            long[] ids = new long[ownDownloads.size()];
+            int next = 0;
+            for (long id : ownDownloads) ids[next++] = id;
+            if (ids.length == 0) return downloads.toString();
             DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-            try (Cursor cursor = manager.query(new DownloadManager.Query())) {
+            try (Cursor cursor = manager.query(new DownloadManager.Query().setFilterById(ids))) {
                 while (cursor != null && cursor.moveToNext()) {
-                    // On API < 29 the cursor holds every download on the device, not just ours
                     long downloadId = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID));
-                    if (!ownDownloads.contains(downloadId)) continue;
                     downloads.put(new JSONObject()
                         .put("id", downloadId)
                         .put("url", cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_URI)))
