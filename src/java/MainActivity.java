@@ -159,6 +159,9 @@ public class MainActivity extends AppCompatActivity {
 
     String cookies = "";
     String basicAuth = "";
+    /* A wrong basicAuth password would be replayed on every 401: the WebView calls this again after
+       each proceed, so one automatic attempt per host+realm and the dialog after that. */
+    final Set<String> authTried = new HashSet<>();
     String userAgent = "";
     boolean blockLocalhostRequests = true;
     boolean JSEnabled = true;
@@ -1143,8 +1146,8 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
 
-                    if (domainIsValid) {
-                        // Credentials and domain are valid; proceed automatically
+                    if (domainIsValid && authTried.add(host + "\n" + realm)) {
+                        // Credentials and domain are valid; proceed automatically, once
                         handler.proceed(login, password);
                         return;
                     }
