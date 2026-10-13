@@ -28,6 +28,9 @@ import java.util.List;
 
 public class MediaPlaybackService extends Service {
     public static final String NOTIFICATION_CHANNEL_ID = "web_app_notifications";
+    /* The media notification gets its own channel: it is posted afresh on every playback start, and
+       on the web-notification channel (IMPORTANCE_DEFAULT) each of those alerts with a sound */
+    public static final String MEDIA_CHANNEL_ID = "web_app_media";
     public static final String ACTION_UPDATE_METADATA = "com.myexample.webtoapk.UPDATE_METADATA";
     public static final String ACTION_UPDATE_STATE = "com.myexample.webtoapk.UPDATE_STATE";
     public static final String ACTION_SET_HANDLERS = "com.myexample.webtoapk.SET_HANDLERS";
@@ -62,15 +65,26 @@ public class MediaPlaybackService extends Service {
         }
     }
 
+    /* One place for both channels. The service creates them itself because it is START_STICKY: it
+       can come back after the process died, without the activity ever running, and a notification
+       posted to a channel that does not exist is dropped (R9). */
+    public static void createNotificationChannels(Context context) {
+        NotificationManagerCompat manager = NotificationManagerCompat.from(context);
+        NotificationChannel web = new NotificationChannel(NOTIFICATION_CHANNEL_ID,
+                "Web App Notifications", NotificationManagerCompat.IMPORTANCE_DEFAULT);
+        web.setDescription("Channel for web app notifications");
+        manager.createNotificationChannel(web);
+        NotificationChannel media = new NotificationChannel(MEDIA_CHANNEL_ID,
+                "Media playback", NotificationManagerCompat.IMPORTANCE_LOW);
+        media.setDescription("Playback controls for audio and video");
+        manager.createNotificationChannel(media);
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
 
-        // The service is START_STICKY: it can come back after the process died, without the activity
-        // ever running, and a notification posted to a channel that does not exist is dropped.
-        NotificationManagerCompat.from(this).createNotificationChannel(new NotificationChannel(
-                NOTIFICATION_CHANNEL_ID, "Web App Notifications",
-                NotificationManagerCompat.IMPORTANCE_DEFAULT));
+        createNotificationChannels(this);
 
         mediaSession = new MediaSession(this, "WebToApkMediaSession");
         mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS |
@@ -328,7 +342,7 @@ public class MediaPlaybackService extends Service {
 
         boolean isPlaying = playbackState.getState() == PlaybackState.STATE_PLAYING;
 
-        Notification.Builder builder = new Notification.Builder(this, NOTIFICATION_CHANNEL_ID);
+        Notification.Builder builder = new Notification.Builder(this, MEDIA_CHANNEL_ID);
         List<Integer> compactActionIndices = new ArrayList<>();
 
         // Action: Previous

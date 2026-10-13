@@ -73,8 +73,6 @@ import android.database.Cursor;
 import android.webkit.URLUtil;
 import android.os.Environment;
 import static android.content.Context.DOWNLOAD_SERVICE;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
@@ -112,8 +110,6 @@ public class MainActivity extends AppCompatActivity {
     private final Set<Long> ownDownloads = new HashSet<>();
     // In-flight bridge requests, so httpAbort can cancel one
     private final Map<String, HttpURLConnection> httpRequests = new ConcurrentHashMap<>();
-    private static final String NOTIFICATION_CHANNEL_ID = "web_app_notifications";
-    private static final String NOTIFICATION_CHANNEL_NAME = "Web App Notifications";
 
     private WebView webview;
     private UserScriptManager userScriptManager;
@@ -211,13 +207,9 @@ public class MainActivity extends AppCompatActivity {
             getWindow().setNavigationBarColor(Color.TRANSPARENT);
         }
 
-        // Create the NotificationChannel (minSdk 26)
-        int importance = NotificationManager.IMPORTANCE_DEFAULT;
-        NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, importance);
-        channel.setDescription("Channel for web app notifications");
-        NotificationManager notificationManager = getSystemService(NotificationManager.class);
-        notificationManager.createNotificationChannel(channel);
-        Log.d("WebToApk", "Notification channel created.");
+        // Both channels (web + media) are created in one place, see MediaPlaybackService
+        MediaPlaybackService.createNotificationChannels(this);
+        Log.d("WebToApk", "Notification channels created.");
 
         if (forceLandscapeMode) {
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
@@ -1816,7 +1808,7 @@ public class MainActivity extends AppCompatActivity {
             intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             PendingIntent pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE);
 
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, MediaPlaybackService.NOTIFICATION_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher) // Use a default launcher icon
                 .setContentTitle(title)
                 .setContentText(message)
