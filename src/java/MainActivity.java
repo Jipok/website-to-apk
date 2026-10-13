@@ -1499,7 +1499,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /* The platform table is not enough where the MIME type is checked strictly: a module served as
+       text/plain is refused outright, and WebAssembly.instantiateStreaming needs application/wasm. */
     private static String mimeTypeOf(String path) {
+        String name = path.toLowerCase(Locale.US);
+        if (name.endsWith(".js") || name.endsWith(".mjs")) return "text/javascript";
+        if (name.endsWith(".wasm")) return "application/wasm";
         String mime = URLConnection.guessContentTypeFromName(path);
         return mime != null ? mime : "text/plain";
     }
