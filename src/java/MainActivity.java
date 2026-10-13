@@ -751,6 +751,22 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /* The WebView resources this app understands. Anything else — MIDI sysex, a resource a future
+       WebView adds — is denied rather than granted blind: hardware access stays opt-in per config. */
+    private List<String> grantableResources(String[] requested) {
+        List<String> allowed = new ArrayList<>();
+        for (String resource : requested) {
+            if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                if (cameraEnabled) allowed.add(resource);
+            } else if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                if (microphoneEnabled) allowed.add(resource);
+            } else if (PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID.equals(resource)) {
+                allowed.add(resource);   // DRM playback, no OS permission behind it
+            }
+        }
+        return allowed;
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -770,18 +786,18 @@ public class MainActivity extends AppCompatActivity {
 
         // Handle Camera/Mic
         if (requestCode == MEDIA_PERMISSION_REQUEST_CODE) {
-            if (currentPermissionRequest != null) {
-                // One denied OS permission must not deny the whole request: the page asked for the
-                // camera and/or the microphone, so grant whichever the user allowed and drop the
-                // rest. The OS state is read again rather than correlated with grantResults.
-                List<String> allowed = new ArrayList<>();
-                for (String resource : currentPermissionRequest.getResources()) {
-                    String needed = PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
-                            ? Manifest.permission.RECORD_AUDIO : Manifest.permission.CAMERA;
-                    if (checkSelfPermission(needed) == PackageManager.PERMISSION_GRANTED) {
-                        allowed.add(resource);
-                    }
-                }
+        if (currentPermissionRequest != null) {
+            // One denied OS permission must not deny the whole request: the page asked for the
+            // camera and/or the microphone, so grant whichever the user allowed and drop the
+            // rest. The OS state is read again rather than correlated with grantResults.
+            List<String> allowed = new ArrayList<>();
+            for (String resource : grantableResources(currentPermissionRequest.getResources())) {
+                if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
+                        && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) continue;
+                if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                        && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) continue;
+                allowed.add(resource);
+            }
                 if (allowed.isEmpty()) {
                     currentPermissionRequest.deny();
                 } else {
@@ -1012,12 +1028,7 @@ public class MainActivity extends AppCompatActivity {
         public void onPermissionRequest(final PermissionRequest request) {
             // A resource the config turns off is dropped, but the rest of the request still is: a
             // page asking for camera and microphone keeps the microphone when the camera is off.
-            List<String> wanted = new ArrayList<>();
-            for (String resource : request.getResources()) {
-                if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource) && !cameraEnabled) continue;
-                if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) && !microphoneEnabled) continue;
-                wanted.add(resource);
-            }
+            List<String> wanted = grantableResources(request.getResources());
             if (wanted.isEmpty()) {
                 request.deny();
                 return;
