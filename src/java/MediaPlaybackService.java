@@ -280,7 +280,13 @@ public class MediaPlaybackService extends Service {
 
         if (state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_PAUSED) {
             // Either playing or paused, show notification and run as foreground
-            startForeground(NOTIFICATION_ID, buildNotification());
+            // Android 12+ refuses a foreground start from the background
+            // (ForegroundServiceStartNotAllowedException): log it rather than kill the process
+            try {
+                startForeground(NOTIFICATION_ID, buildNotification());
+            } catch (Exception e) {
+                Log.e("WebToApk", "Cannot bring the media service to the foreground", e);
+            }
         } else {
             // Stopped or None, we can stop the foreground service.
             // false = do not remove the notification. It will be removed by swiping.

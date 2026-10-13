@@ -1867,6 +1867,16 @@ public class MainActivity extends AppCompatActivity {
             return "granted";
         }
 
+        /* The service stops itself when playback ends, and Android 8+ refuses to start a background
+           service from the background: a throw on this thread would take the whole process down */
+        private void sendToMediaService(Intent intent) {
+            try {
+                context.startService(intent);
+            } catch (Exception e) {
+                Log.e("WebToApk", "Cannot reach the media service", e);
+            }
+        }
+
         @JavascriptInterface
         public void updateMediaMetadata(String title, String artist, String album, @Nullable String artworkUrl) {
             Intent intent = new Intent(context, MediaPlaybackService.class);
@@ -1875,7 +1885,7 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra("artist", artist);
             intent.putExtra("album", album);
             intent.putExtra("artworkUrl", artworkUrl);
-            context.startService(intent);
+            sendToMediaService(intent);
         }
 
         @JavascriptInterface
@@ -1883,7 +1893,7 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(context, MediaPlaybackService.class);
             intent.setAction(MediaPlaybackService.ACTION_UPDATE_STATE);
             intent.putExtra("state", state);
-            context.startService(intent);
+            sendToMediaService(intent);
         }
 
         @JavascriptInterface
@@ -1891,7 +1901,7 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(context, MediaPlaybackService.class);
             intent.setAction(MediaPlaybackService.ACTION_SET_HANDLERS);
             intent.putExtra("actions", actions);
-            context.startService(intent);
+            sendToMediaService(intent);
         }
 
         @JavascriptInterface
@@ -1901,7 +1911,7 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra("duration", duration);
             intent.putExtra("playbackRate", playbackRate);
             intent.putExtra("position", position);
-            context.startService(intent);
+            sendToMediaService(intent);
         }
 
         @JavascriptInterface
