@@ -123,7 +123,7 @@ forceDarkTheme = false                # Force dark mode for the website
 showDetailsOnErrorScreen = false      # Show connection error details for user
 DebugWebView = false                  # Enable remote debugging via chrome://inspect
 confirmOpenExternalApp = true         # Show confirmation before opening external app
-blockLocalhostRequests = true         # Block requests to 127.0.0.1
+blockLocalhostRequests = true         # Block requests to localhost
 trustUserCA            = false        # Allow app to trust user-installed SSL certs
 ca                     =              # Bundle custom CA certificates (see Advanced Topics)
 geolocationEnabled     = false        # Allow access to device location (GPS)
@@ -313,6 +313,7 @@ If you need real push, open an issue. An **optional** integration (FCM, HMS or a
 - All app data is stored in the app's private directory
 - The keystore `my-release-key.jks` (in the repository root) password is set to "123456" by default
 - Internet permission is required and automatically included
+- `blockLocalhostRequests` covers loopback however it is spelled: `127.0.0.0/8`, `::1`, `0.0.0.0`, `localhost`
 - If you need to support [different Android versions](https://apilevels.com/), edit `build.gradle` accordingly
 - Based on the original work from: https://github.com/successtar/web-to-app  
 

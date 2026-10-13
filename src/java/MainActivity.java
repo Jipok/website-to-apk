@@ -43,9 +43,12 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Iterator;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import android.webkit.JavascriptInterface;
@@ -527,10 +530,64 @@ public class MainActivity extends AppCompatActivity {
     /* A page could ask the bridge for gigabytes: read at most this much and say so */
     private static final int MAX_HTTP_BODY_CHARS = 10 * 1024 * 1024;
 
-    /* The addresses blockLocalhostRequests refuses — in shouldInterceptRequest and in the bridge */
+    /* The addresses blockLocalhostRequests refuses — in shouldInterceptRequest and in the bridge.
+       A name is not resolved here: shouldInterceptRequest sits in the request path of every
+       subresource, so a DNS lookup would delay page loads. Literals, "localhost" and
+       "*.localhost" cover the spellings a page reaches for; README documents the limit. */
     private static boolean isLocalhost(String host) {
-        return "127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host)
-                || "::1".equals(host) || "0:0:0:0:0:0:0:1".equals(host);
+        if (host == null || host.isEmpty()) return false;
+        String bare = host;
+        if (bare.charAt(0) == '[' && bare.charAt(bare.length() - 1) == ']') {
+            bare = bare.substring(1, bare.length() - 1);   // Uri.getHost() keeps an IPv6 literal bracketed
+        }
+        if ("localhost".equalsIgnoreCase(bare) || bare.toLowerCase(Locale.US).endsWith(".localhost")) {
+            return true;
+        }
+        for (int i = 0; i < bare.length(); i++) {
+            char c = bare.charAt(i);
+            if ((c < '0' || c > '9') && c != '.' && c != ':') return false;   // a name, not a literal
+        }
+        try {
+            InetAddress address = InetAddress.getByName(bare);
+            return address.isLoopbackAddress() || address.isAnyLocalAddress();
+        } catch (UnknownHostException e) {
+            return false;   // not an address after all; the request itself reports the failure
+        }
+    }
+
+    /* Uri.getHost() is null for a bracketed IPv6 literal ("https://[::1]:9/"), so fall back to the
+       authority; both the WebView's request path and the bridge have to read the host the same way */
+    private static String hostOf(Uri uri) {
+        String host = uri == null ? null : uri.getHost();
+        // Measured: "https://[::1]:9/" gives getHost() == "[" (and "[0" for a full IPv6 address),
+        // so anything with a bracket in it is re-read from the authority below
+        if (host != null && !host.isEmpty() && host.indexOf('[') < 0) return host;
+        String authority = uri == null ? null : uri.getAuthority();
+        if (authority == null) return null;
+        int at = authority.lastIndexOf('@');                 // strip userinfo
+        if (at >= 0) authority = authority.substring(at + 1);
+        if (authority.startsWith("[")) {                     // [::1]:9 -> ::1
+            int end = authority.indexOf(']');
+            return end > 0 ? authority.substring(1, end) : authority;
+        }
+        int colon = authority.lastIndexOf(':');              // host:port -> host
+        return colon >= 0 ? authority.substring(0, colon) : authority;
+    }
+
+    /* The bridge can afford what the WebView's request path cannot: a DNS lookup, so a name that
+       resolves to loopback (localtest.me) is refused too. The request resolves it anyway. */
+    private static boolean isLocalhostTarget(String url) {
+        String host = hostOf(Uri.parse(url == null ? "" : url));
+        if (host == null || host.isEmpty()) return false;
+        if (isLocalhost(host)) return true;
+        try {
+            for (InetAddress address : InetAddress.getAllByName(host)) {
+                if (address.isLoopbackAddress() || address.isAnyLocalAddress()) return true;
+            }
+        } catch (Exception ignored) {
+            // an unresolvable host is not a loopback address
+        }
+        return false;
     }
 
     /* The bridge answers with a JSON object: a failure is an `error` field, not an exception */
@@ -1215,7 +1272,7 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-            String host = request.getUrl().getHost();
+            String host = hostOf(request.getUrl());
 
             if (blockLocalhostRequests && isLocalhost(host)) {
                 Log.d("WebToApk", "Blocked access to localhost resource: " + request.getUrl().toString());
@@ -1568,12 +1625,13 @@ public class MainActivity extends AppCompatActivity {
                 answer(id, errorJson("only http and https are allowed"));
                 return;
             }
-            if (blockLocalhostRequests && isLocalhost(target.getHost())) {
-                answer(id, errorJson("localhost is blocked"));
-                return;
-            }
             new Thread(() -> {
                 try {
+                    // The lookup this may need is one the request itself would do anyway
+                    if (blockLocalhostRequests && isLocalhostTarget(target.toString())) {
+                        answer(id, errorJson("localhost is blocked"));
+                        return;
+                    }
                     answer(id, performRequest(id, method, target.toString(), headersJson, body));
                 } catch (Exception e) {
                     Log.e("WebToApk", "httpRequest failed: " + url, e);
