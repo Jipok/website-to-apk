@@ -1185,6 +1185,10 @@ public class MainActivity extends AppCompatActivity {
         // Check for external link
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            // A subframe navigating is not the user leaving the app: embeds, captchas and payment
+            // frames cross domains all the time and must not raise the "open in browser" dialog
+            if (!request.isForMainFrame()) return false;
+
             String url = request.getUrl().toString();
 
             // Check for non-standard URL scheme (external app)
@@ -1198,25 +1202,14 @@ public class MainActivity extends AppCompatActivity {
                             .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
                                 @Override
                                 public void onClick(DialogInterface dialog, int which) {
-                                    try {
-                                        // Try to launch an external Intent for the custom scheme
-                                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                                        view.getContext().startActivity(intent);
-                                    } catch (ActivityNotFoundException e) {
-                                        Log.e("WebToApk", "\033[0;31mNo application can handle this URL:\033[0m " + url, e);
-                                    }
+                                    openExternally(url, view);
                                 }
                             })
                             .setNegativeButton(android.R.string.no, null)
                             .show();
                     } else {
                         // Open directly without confirmation
-                        try {
-                            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                            view.getContext().startActivity(intent);
-                        } catch (ActivityNotFoundException e) {
-                            Log.e("WebToApk", "\033[0;31mNo application can handle this URL:\033[0m " + url);
-                        }
+                        openExternally(url, view);
                     }
                 } else {
                     Log.d("WebToApk", "Opening URLs in external app is disabled: " + url);
@@ -1252,6 +1245,34 @@ public class MainActivity extends AppCompatActivity {
             return handleExternalLink(url, view);
         }
 
+        /* One place for "hand this URL to another app". An `intent://` URL is how an Android site
+           names the app to open (Maps, Play, UPI); a missing handler used to crash the app, and a
+           page must not get to name the component it starts, hence the nulls. */
+        private void openExternally(String url, WebView view) {
+            Intent intent;
+            try {
+                if (url.startsWith("intent:")) {
+                    intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
+                    intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                    intent.setComponent(null);
+                    intent.setSelector(null);
+                } else {
+                    intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                }
+            } catch (Exception e) {
+                Log.e("WebToApk", "Cannot parse " + url, e);
+                return;
+            }
+            try {
+                view.getContext().startActivity(intent);
+            } catch (ActivityNotFoundException e) {
+                Log.e("WebToApk", "\033[0;31mNo application can handle this URL:\033[0m " + url, e);
+                // intent://…;S.browser_fallback_url=<url>;end — where the site wants us to go instead
+                String fallback = intent.getStringExtra("browser_fallback_url");
+                if (fallback != null && !fallback.isEmpty()) view.loadUrl(fallback);
+            }
+        }
+
         private boolean handleExternalLink(String url, WebView view) {
             if (!enableExternalLinks) {
                 return true; // Block external links
@@ -1265,8 +1286,7 @@ public class MainActivity extends AppCompatActivity {
                             @Override
                             public void onClick(DialogInterface dialog, int which) {
                                 Log.d("WebToApk", "\033[1;34mExternal link:\033[0m '" + url);
-                                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                                view.getContext().startActivity(intent);
+                                openExternally(url, view);
                             }
                         })
                         .setNegativeButton(android.R.string.no, null)
@@ -1274,8 +1294,7 @@ public class MainActivity extends AppCompatActivity {
                     return true;
                 } else {
                     Log.d("WebToApk", "\033[1;34mExternal link:\033[0m '" + url);
-                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                    view.getContext().startActivity(intent);
+                    openExternally(url, view);
                     return true;
                 }
             }
