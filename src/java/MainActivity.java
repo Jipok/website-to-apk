@@ -107,12 +107,15 @@ public class MainActivity extends AppCompatActivity {
     // remembered (and persisted), so getDownloads() and removeDownload() cannot see anyone else's.
     private static final String DOWNLOADS_PREFS = "webtoapk_downloads";
     private static final String DOWNLOADS_PREFS_KEY = "ids";
+    private static final String NOTIFICATION_PREFS = "webtoapk_notifications";
+    private static final String NOTIFICATION_ASKED_KEY = "asked";
     // Read from the JavaBridge thread (getDownloads/removeDownload), written from the main one
     private final Set<Long> ownDownloads = ConcurrentHashMap.newKeySet();
     // In-flight bridge requests, so httpAbort can cancel one
     private final Map<String, HttpURLConnection> httpRequests = new ConcurrentHashMap<>();
 
     private WebView webview;
+    private CustomWebChrome chrome;
     private UserScriptManager userScriptManager;
     private ProgressBar spinner;
     private SwipeRefreshLayout swipeRefresh;
@@ -193,9 +196,25 @@ public class MainActivity extends AppCompatActivity {
     private static final String LOCAL_SITE_ASSET_DIR = "site";
     private WebViewAssetLoader assetLoader;
 
+    /* forceDarkTheme has to reach the WebView, not just the app's own resources: the WebView takes
+       prefers-color-scheme from the configuration of the context it is created with, and AppCompat's
+       night mode does not carry that far. Overriding the base context does, and the app's own
+       values-night resources follow from the same configuration. */
+    @Override
+    protected void attachBaseContext(Context base) {
+        if (forceDarkTheme) {
+            Configuration night = new Configuration(base.getResources().getConfiguration());
+            night.uiMode = (night.uiMode & ~Configuration.UI_MODE_NIGHT_MASK) | Configuration.UI_MODE_NIGHT_YES;
+            base = base.createConfigurationContext(night);
+        }
+        super.attachBaseContext(base);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         if (forceDarkTheme) {
+            // The base-context override above is what the WebView reads; this is what makes the
+            // app's own resources (and every values-night colour) go dark
             AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
         }
         if (edgeToEdge) {
@@ -247,7 +266,8 @@ public class MainActivity extends AppCompatActivity {
         swipeRefresh.setEnabled(pullToRefresh);
         swipeRefresh.setOnRefreshListener(this::onPullToRefresh);
         webview.setWebViewClient(new CustomWebViewClient());
-        webview.setWebChromeClient(new CustomWebChrome());
+        chrome = new CustomWebChrome();
+        webview.setWebChromeClient(chrome);
         webAppInterface = new WebAppInterface(this);
         webview.addJavascriptInterface(webAppInterface, "WebToApk");
         registerBackCallback();
@@ -953,8 +973,16 @@ public class MainActivity extends AppCompatActivity {
         private int mOriginalOrientation;
         private int mOriginalSystemUiVisibility;
 
+        boolean isFullscreen() {
+            return mCustomView != null;
+        }
+
         @Override
         public void onHideCustomView() {
+            // The WebView hides its own fullscreen in response to onCustomViewHidden, so it may call
+            // this a second time — and back calls it directly. Without the guard that second call NPEs
+            // on the callback cleared below.
+            if (mCustomView == null) return;
             ((FrameLayout)getWindow().getDecorView()).removeView(mCustomView);
             mCustomView = null;
             getWindow().getDecorView().setSystemUiVisibility(mOriginalSystemUiVisibility);
@@ -965,8 +993,11 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onShowCustomView(View view, WebChromeClient.CustomViewCallback callback) {
+            // A second fullscreen request while one is showing is rejected, so the view on screen stays
+            // the page's current one (the AOSP sample's rule) — but the new callback still has to be
+            // ended, or the WebView waits forever for a custom view that nobody will hide.
             if (mCustomView != null) {
-                onHideCustomView();
+                callback.onCustomViewHidden();
                 return;
             }
             mCustomView = view;
@@ -1439,6 +1470,10 @@ public class MainActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
+                if (chrome != null && chrome.isFullscreen()) {
+                    chrome.onHideCustomView();   // back leaves fullscreen before it leaves the page
+                    return;
+                }
                 if (webview == null) {   // renderer gone, the activity is already restarting
                     finish();
                     return;

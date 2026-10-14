@@ -118,7 +118,7 @@ SavePassword = true                   # Allow saving passwords in WebView
 AllowFileAccess = true
 AllowFileAccessFromFileURLs = true
 forceLandscapeMode = false            # Lock screen orientation to landscape (Android 15+ ignores it on large screens)
-forceDarkTheme = false                # Force dark mode for the website
+forceDarkTheme = false                # Tell the page the system is dark and theme the app dark (the site styles itself)
 
 showDetailsOnErrorScreen = false      # Show connection error details for user
 DebugWebView = false                  # Enable remote debugging via chrome://inspect
@@ -314,6 +314,7 @@ If you need real push, open an issue. An **optional** integration (FCM, HMS or a
 - The keystore `my-release-key.jks` (in the repository root) password is set to "123456" by default
 - Internet permission is required and automatically included
 - `blockLocalhostRequests` covers loopback however it is spelled: `127.0.0.0/8`, `::1`, `0.0.0.0`, `localhost`
+- `forceDarkTheme` reports a dark system to the page and themes the app dark, whatever the real system setting is: the WebView answers `prefers-color-scheme: dark` and the app uses its `values-night` colours. It does **not** restyle the page — a site without a dark theme stays as it is, so add a userscript if you want one
 - If you need to support [different Android versions](https://apilevels.com/), edit `build.gradle` accordingly
 - Based on the original work from: https://github.com/successtar/web-to-app  
 
