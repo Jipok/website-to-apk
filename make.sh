@@ -831,31 +831,39 @@ get_tools() {
     info "Accepting licenses..."
     try "yes | '$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME --licenses"
 
+    # platforms;android-36 is the compileSdk, and 35.0.0 is the build-tools revision AGP 8.10
+    # defaults to; anything else just makes AGP download its own on top
     info "Installing necessary SDK components..."
     try "'$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager' --sdk_root=$ANDROID_HOME \
         'platform-tools' \
-        'platforms;android-33' \
-        'build-tools;33.0.2'"
+        'platforms;android-36' \
+        'build-tools;35.0.0'"
 
     log "Android SDK successfully installed!"
 }
 
 
 regradle() {
-    info "Reinstalling Gradle..."
+    # The version is read from the wrapper properties that are part of the repository: hardcoding one
+    # here is how this script ended up writing a 7.4 wrapper while AGP 8.10 needs 8.11.1 or newer.
+    local version
+    version=$(sed -n 's#.*gradle-\([0-9][0-9.]*\)-all\.zip.*#\1#p' gradle/wrapper/gradle-wrapper.properties 2>/dev/null)
+    [ -n "$version" ] || error "No Gradle version in gradle/wrapper/gradle-wrapper.properties"
+
+    info "Reinstalling Gradle $version..."
     try rm -rf gradle gradlew .gradle .gradle-cache
     try mkdir -p gradle/wrapper
 
     cat > gradle/wrapper/gradle-wrapper.properties << EOL
 distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
-distributionUrl=https\://services.gradle.org/distributions/gradle-7.4-all.zip
+distributionUrl=https\://services.gradle.org/distributions/gradle-${version}-all.zip
 zipStoreBase=GRADLE_USER_HOME
 zipStorePath=wrapper/dists
 EOL
 
-    try wget -q --show-progress https://raw.githubusercontent.com/gradle/gradle/v7.4.0/gradle/wrapper/gradle-wrapper.jar -O gradle/wrapper/gradle-wrapper.jar
-    try wget -q --show-progress https://raw.githubusercontent.com/gradle/gradle/v7.4.0/gradlew -O gradlew
+    try wget -q --show-progress "https://raw.githubusercontent.com/gradle/gradle/v${version}/gradle/wrapper/gradle-wrapper.jar" -O gradle/wrapper/gradle-wrapper.jar
+    try wget -q --show-progress "https://raw.githubusercontent.com/gradle/gradle/v${version}/gradlew" -O gradlew
     try chmod +x gradlew
 
     log "Gradle reinstalled successfully"
