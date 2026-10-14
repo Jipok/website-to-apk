@@ -12,4 +12,6 @@
     <string name="download_started">下载已开始…</string>
     <string name="download_failed">下载启动失败。</string>
     <string name="open_download_failed">无法打开该文件。</string>
+    <string name="choose_file">选择文件</string>
+    <string name="no_file_manager">无法打开文件管理器</string>
 </resources>

@@ -12,4 +12,6 @@
     <string name="download_started">Download gestartet…</string>
     <string name="download_failed">Download konnte nicht gestartet werden.</string>
     <string name="open_download_failed">Datei kann nicht geöffnet werden.</string>
+    <string name="choose_file">Datei auswählen</string>
+    <string name="no_file_manager">Dateimanager kann nicht geöffnet werden.</string>
 </resources>

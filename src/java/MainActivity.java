@@ -329,9 +329,11 @@ public class MainActivity extends AppCompatActivity {
                 Uri[] results = null;
 
                 if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
-                    Intent intentData = result.getData(); // Переименовали с data на intentData
+                    Intent intentData = result.getData();
 
-                    // Обработка множественного выбора
+                    // Not FileChooserParams.parseResult: even current WebView returns only
+                    // Intent.getData() there and drops the ClipData, so <input multiple> would
+                    // silently become single-select. Это единственная причина, почему разбор свой.
                     if (intentData.getClipData() != null) {
                         int count = intentData.getClipData().getItemCount();
                         results = new Uri[count];
@@ -362,7 +364,7 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     closeSaveStream();   // a second save must not leak the first stream
                     saveStream = getContentResolver().openOutputStream(result.getData().getData());
-                    webview.evaluateJavascript("__webtoapkSendBlob()", null);
+                    if (webview != null) webview.evaluateJavascript("__webtoapkSendBlob()", null);
                 } catch (Exception e) {
                     Log.e("WebToApk", "Cannot open save target", e);
                     Toast.makeText(this, R.string.download_failed, Toast.LENGTH_LONG).show();
@@ -1023,30 +1025,42 @@ public class MainActivity extends AppCompatActivity {
             }
             mFilePathCallback = filePathCallback;
 
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            // A page that does not say what it accepts must not be limited to images
-            intent.setType("*/*");
-
-            // Проверяем параметры файлового диалога
-            String[] acceptTypes = fileChooserParams.getAcceptTypes();
-            if (acceptTypes.length > 0 && acceptTypes[0] != null && acceptTypes[0].contains("image")) {
-                intent.setType("image/*");
-            }
+            // Let the provider build the intent: it maps every accept entry (".pdf" ->
+            // "application/pdf") and puts the whole list into EXTRA_MIME_TYPES, which the hand-built
+            // version never did (it recognised "image" and nothing else). Two things it is not
+            // uniform about, both in WebView's AwContentsClient.FileChooserParamsImpl: WebView 76
+            // does not set EXTRA_ALLOW_MULTIPLE and passes an extension through as the MIME type,
+            // and it keeps only the first entry of a multi-entry accept list.
+            Intent intent = fileChooserParams.createIntent();
 
             // Поддержка множественного выбора
             if (fileChooserParams.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
                 intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
             }
 
-            Intent chooserIntent = Intent.createChooser(intent, "Выберите файл");
+            String[] accepts = fileChooserParams.getAcceptTypes();
+            String acceptType = intent.getType();
+            // A ".pdf" type matches no file at all, and a truncated list would hide what the page
+            // accepts, so in those cases stay permissive — EXTRA_MIME_TYPES, where the provider set
+            // it, still does the filtering.
+            if (accepts.length != 1 || acceptType == null || acceptType.startsWith(".")) {
+                intent.setType("*/*");
+            }
+
+            Intent chooserIntent = Intent.createChooser(intent, getString(R.string.choose_file));
 
             try {
                 fileChooserLauncher.launch(chooserIntent);
             } catch (ActivityNotFoundException e) {
+                // The page is waiting for an answer: a callback dropped without onReceiveValue(null)
+                // leaves its <input type=file> pending forever. Returning true says "handled, nothing
+                // chosen", which is what happened.
+                if (mFilePathCallback != null) {
+                    mFilePathCallback.onReceiveValue(null);
+                }
                 mFilePathCallback = null;
-                Toast.makeText(MainActivity.this, "Невозможно открыть файловый менеджер", Toast.LENGTH_LONG).show();
-                return false;
+                Toast.makeText(MainActivity.this, R.string.no_file_manager, Toast.LENGTH_LONG).show();
+                return true;
             }
 
             return true;
@@ -1540,6 +1554,9 @@ public class MainActivity extends AppCompatActivity {
 
     /* Retry Loading the page */
     public void tryAgain(View v) {
+        if (webview == null) {   // renderer gone, nothing to reload
+            return;
+        }
         parentLayout.removeView(errorLayout);
         errorLayout = null;
         parentLayout.addView(mainLayout);
@@ -1823,6 +1840,10 @@ public class MainActivity extends AppCompatActivity {
                 // We need to run this on the main thread
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        // Remember the ask: "never asked" and "denied for good" both report no
+                        // rationale, so this flag is the only way to tell them apart
+                        context.getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE).edit()
+                                .putBoolean(NOTIFICATION_ASKED_KEY, true).apply();
                         ActivityCompat.requestPermissions((Activity) context, new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATION_PERMISSION_REQUEST_CODE);
                         Log.d("WebToApk", "Requesting notification permission.");
                     } else {
@@ -1892,17 +1913,17 @@ public class MainActivity extends AppCompatActivity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                     return "granted";
-                } else {
-                    // If we should show a rationale, it means the user has denied it once but can be asked again.
-                    // This is the "prompt" state from the web API's perspective.
-                    if (ActivityCompat.shouldShowRequestPermissionRationale((Activity) context, Manifest.permission.POST_NOTIFICATIONS)) {
-                         return "prompt";
-                    }
-                    // If no rationale, it's either the first time ("prompt") or permanently denied ("denied").
-                    // For simplicity, we can't easily distinguish "denied" from "first-time-prompt" without more state tracking.
-                    // Returning "prompt" is a safe default for the shim.
+                }
+                if (ActivityCompat.shouldShowRequestPermissionRationale((Activity) context, Manifest.permission.POST_NOTIFICATIONS)) {
+                    // Denied once, but the system will still show the dialog: the web "prompt"
                     return "prompt";
                 }
+                // No rationale means either never asked (the web "prompt") or asked and refused for
+                // good. Reporting "prompt" for both made the page ask forever; the flag set in
+                // requestNotificationPermission() tells the two apart.
+                boolean asked = context.getSharedPreferences(NOTIFICATION_PREFS, MODE_PRIVATE)
+                        .getBoolean(NOTIFICATION_ASKED_KEY, false);
+                return asked ? "denied" : "prompt";
             }
             // On older versions, permission is granted at install time.
             return "granted";

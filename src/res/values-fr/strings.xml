@@ -12,4 +12,6 @@
     <string name="download_started">Téléchargement commencé…</string>
     <string name="download_failed">Échec du démarrage du téléchargement.</string>
     <string name="open_download_failed">Impossible d\'ouvrir le fichier.</string>
+    <string name="choose_file">Choisir un fichier</string>
+    <string name="no_file_manager">Impossible d\'ouvrir un gestionnaire de fichiers.</string>
 </resources>

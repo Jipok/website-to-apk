@@ -12,4 +12,6 @@
     <string name="download_started">Загрузка началась…</string>
     <string name="download_failed">Не удалось начать загрузку.</string>
     <string name="open_download_failed">Не удалось открыть файл.</string>
+    <string name="choose_file">Выберите файл</string>
+    <string name="no_file_manager">Невозможно открыть файловый менеджер</string>
 </resources>
