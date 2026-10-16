@@ -396,7 +396,7 @@ public class MediaPlaybackService extends Service {
 
 
         // --- Build the notification ---
-        builder.setSmallIcon(R.mipmap.ic_launcher) // Mandatory small icon
+        builder.setSmallIcon(R.drawable.ic_stat) // mandatory, and monochrome (ic_stat.xml)
             .setContentTitle(metadata != null ? metadata.getString(MediaMetadata.METADATA_KEY_TITLE) : "Radio")
             .setContentText(metadata != null ? metadata.getString(MediaMetadata.METADATA_KEY_ARTIST) : "...")
             .setLargeIcon(metadata != null ? metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART) : null)

@@ -1,0 +1,16 @@
+<!-- Notification small icon. From API 21 the platform draws a notification's small icon as an alpha
+     mask: a coloured bitmap with an opaque background (the launcher PNG) becomes a solid white square,
+     and only the transparent parts of the glyph are left out. So the icon must be a monochrome glyph
+     on a transparent background — a browser window (frame + header), drawn with `fillType="evenOdd"`
+     so the interior is a hole, not a filled body. Both notifications use it. No `android:tint`: the
+     system tints the mask itself. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24.0"
+    android:viewportHeight="24.0">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M5,3h14a2,2 0 0 1 2,2v14a2,2 0 0 1 -2,2h-14a2,2 0 0 1 -2,-2v-14a2,2 0 0 1 2,-2zM5,9h14v9h-14z"/>
+</vector>
