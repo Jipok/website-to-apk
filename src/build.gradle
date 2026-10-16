@@ -21,23 +21,25 @@ apply plugin: 'com.android.application'
 apply from: '../config.gradle'
 
 android {
-    namespace appId
+    // The namespace is where R/BuildConfig are generated and how the relative names in the manifest
+    // resolve; it does NOT have to be the application id. Keeping it fixed means the Java package
+    // never depends on the config, so sync_sources() copies src/java/ in verbatim — no sed.
+    namespace 'com.myexample.webtoapk'
 
-    compileSdkVersion 36
+    compileSdk 36
     defaultConfig {
         applicationId appId
-        minSdkVersion 26
-        targetSdkVersion 36
+        minSdk 26
+        targetSdk 36
         versionCode appVersionCode
         versionName appVersionName
 
         // Keep only the locales the app actually ships (values-* in res/).
         // Drops ~70 unused translations bundled by appcompat/fragment/emoji2.
-        resConfigs "en", "de", "es", "fr", "ru", "zh"
+        resourceConfigurations += ["en", "de", "es", "fr", "ru", "zh"]
     }
 
-    //Successtar Edit
-    lintOptions {
+    lint {
         checkReleaseBuilds false
         // Or, if you prefer, you can continue to check for errors in release builds,
         // but continue the build even when errors are found:

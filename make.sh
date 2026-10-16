@@ -54,7 +54,7 @@ try() {
 
 
 set_var() {
-    local java_file="app/src/main/java/com/$appname/webtoapk/MainActivity.java"
+    local java_file="$SRC_JAVA/MainActivity.java"
     [ ! -f "$java_file" ] && error "MainActivity.java not found"
 
     local pattern="$@"
@@ -184,22 +184,14 @@ ext.appVersionName = '$version_name'"
 # src/ is the source of truth; app/src is unpacked from it on every apply_config, so a
 # configured tree never accumulates edits and `clean` only has to delete the result.
 sync_sources() {
-    # Java sources live in the package directory of the current application id
-    local pkg="app/src/main/java/com/$appname/webtoapk"
-
     try rm -rf app/src/main/java app/src/main/res app/src/main/assets app/src/main/AndroidManifest.xml
-    try mkdir -p "$pkg" app/src/main/assets
+    try mkdir -p "$SRC_JAVA" app/src/main/assets
 
     try cp -a src/build.gradle src/proguard-rules.pro app/
-    try cp -a src/java/. "$pkg/"
+    try cp -a src/java/. "$SRC_JAVA/"
     try cp -a src/res app/src/main/
     try cp -a src/assets/. app/src/main/assets/
     try cp -a src/AndroidManifest.xml app/src/main/
-
-    # The template declares the default package, the config decides the real one
-    if ! grep -q "package com.$appname.webtoapk;" "$pkg/MainActivity.java"; then
-        try "sed -i 's/com\\.[a-zA-Z0-9_]*\\.webtoapk/com.$appname.webtoapk/g' $pkg/*.java"
-    fi
 }
 
 
@@ -488,83 +480,49 @@ set_version() {
 set_deep_link() {
     local manifest_file="app/src/main/AndroidManifest.xml"
     local hosts_input="$@"
+
+    # Empty value: sync_sources() unpacks the template manifest, whose only intent-filter is the
+    # launcher, so there is no old VIEW filter to strip and nothing to add
+    [ -z "$hosts_input" ] && return 0
+
+    # A host is letters, digits, dots and dashes, optionally behind a `*.` wildcard. Anything else
+    # (a path, a quote) goes straight into AndroidManifest.xml, where it either breaks the XML or
+    # quietly makes the filter unusable — an error here names the value instead.
+    local host
+    for host in $hosts_input; do
+        [[ "$host" =~ ^(\*\.)?[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || error "Invalid deeplink host: '$host'"
+    done
+
     local tmp_file
     tmp_file=$(mktemp)
 
-    # First, create a version of the manifest without any VIEW/BROWSER intent-filter.
-    # This prepares a clean slate.
-    awk '
-        # Find any intent-filter block
-        /<intent-filter>/, /<\/intent-filter>/ {
-            # Buffer the lines of the block
-            buffer = buffer $0 ORS
-            # When the block ends...
-            if (/<\/intent-filter>/) {
-                # ...check if it is NOT the browser/deeplink one (by looking for action.VIEW).
-                if (buffer !~ /android.intent.action.VIEW/) {
-                    # If it is the LAUNCHER filter, print it.
-                    printf "%s", buffer
-                }
-                # Reset buffer for the next potential block.
-                buffer = ""
+    # Insert the VIEW/BROWSABLE filter right after the launcher intent-filter
+    awk -v hosts="$hosts_input" '
+        /<\/intent-filter>/ && !inserted {
+            print
+            print "            <intent-filter>"
+            print "                <action android:name=\"android.intent.action.VIEW\" />"
+            print "                <category android:name=\"android.intent.category.DEFAULT\" />"
+            print "                <category android:name=\"android.intent.category.BROWSABLE\" />"
+            print "                <data android:scheme=\"http\" />"
+            print "                <data android:scheme=\"https\" />"
+
+            n = split(hosts, h_array, " ")
+            for (i = 1; i <= n; i++) {
+                 if (h_array[i] != "") {
+                    print "                <data android:host=\"" h_array[i] "\" />"
+                 }
             }
-            # Do not print the line yet.
+
+            print "            </intent-filter>"
+            inserted=1
             next
         }
-        # Print all other lines that are not in a VIEW intent-filter block.
         { print }
     ' "$manifest_file" > "$tmp_file"
 
-    # If hosts were provided, add the complete intent-filter block back in.
-    if [ -n "$hosts_input" ]; then
-        local new_tmp_file
-        new_tmp_file=$(mktemp)
-        # Use awk to insert the new block after the main launcher intent-filter.
-        awk -v hosts="$hosts_input" '
-            # After the first (launcher) intent-filter is closed...
-            /<\/intent-filter>/ && !inserted {
-                # ...print the closing tag first.
-                print
-                # Then print the new block for our deeplink.
-                print "            <intent-filter>"
-                print "                <action android:name=\"android.intent.action.VIEW\" />"
-                print "                <category android:name=\"android.intent.category.DEFAULT\" />"
-                print "                <category android:name=\"android.intent.category.BROWSABLE\" />"
-                print "                <data android:scheme=\"http\" />"
-                print "                <data android:scheme=\"https\" />"
-
-                # Split hosts by space and iterate to create data tags for each host
-                n = split(hosts, h_array, " ")
-                for (i = 1; i <= n; i++) {
-                     if (h_array[i] != "") {
-                        print "                <data android:host=\"" h_array[i] "\" />"
-                     }
-                }
-
-                print "            </intent-filter>"
-                # Set a flag to ensure we only do this once.
-                inserted=1
-                next
-            }
-            # Print all other lines as usual.
-            { print }
-        ' "$tmp_file" > "$new_tmp_file"
-
-        # The final content is now in new_tmp_file.
-        mv "$new_tmp_file" "$tmp_file"
-    fi
-
-    # Apply changes only if the file is actually different.
-    if ! diff -q "$manifest_file" "$tmp_file" >/dev/null; then
-        if [ -z "$hosts_input" ]; then
-            log "Removing deeplink"
-        else
-            log "Setting deeplinks for: $hosts_input"
-        fi
-        try mv "$tmp_file" "$manifest_file"
-    else
-        rm "$tmp_file"
-    fi
+    log "Setting deeplinks for: $hosts_input"
+    try mv "$tmp_file" "$manifest_file"
 }
 
 # trustUserCA controls whether the device's user-installed CAs are trusted.
@@ -672,109 +630,22 @@ set_icon() {
 
 set_userscripts() {
     local scripts_dir="app/src/main/assets/userscripts"
-
-    # Create destination directory if it doesn't exist
     mkdir -p "$scripts_dir"
 
-    # If no arguments provided, clean destination and exit
-    if [ $# -eq 0 ] || [ -z "$1" ]; then
-        if [ -n "$(ls -A $scripts_dir 2>/dev/null)" ]; then
-            find "$scripts_dir" -mindepth 1 -delete
-            log "Userscripts directory cleared"
-        fi
-        return 0
-    fi
+    # Empty value: sync_sources() unpacks the template's assets (helpers.js only), so any script the
+    # config dropped is already gone
+    [ -z "${1:-}" ] && return 0
 
-    # Track changes for reporting
-    local added=()
-    local updated=()
-    local removed=()
-
-    # Get a list of currently existing script basenames in the destination
-    local existing_scripts=()
-    # Use find to properly handle filenames with spaces
+    # The destination starts empty for the same reason, so every configured script is a new one
+    local file base_name
     while IFS= read -r file; do
-        existing_scripts+=("$(basename "$file")")
-    done < <(find "$scripts_dir" -mindepth 1 -type f)
-
-    # Build a list of all source files from arguments
-    local source_files=()
-    for pattern in "$@"; do
-        # If CONFIG_DIR is defined and pattern is relative, prepend it
-        if [ -n "${CONFIG_DIR:-}" ] && [[ "$pattern" != /* ]]; then
-            pattern="$CONFIG_DIR/$pattern"
-        fi
-
-        # Use a nullglob to avoid errors if a pattern doesn't match any files
-        shopt -s nullglob
-        for file in $pattern; do
-            if [ -f "$file" ]; then
-                source_files+=("$file")
-            fi
-        done
-        shopt -u nullglob # Revert glob option
-    done
-
-    # Process source files: copy new/updated files and track which scripts should exist
-    local current_scripts=()
-    for src_file in "${source_files[@]}"; do
-        local base_name
-        base_name=$(basename "$src_file")
-        local dest_file="$scripts_dir/$base_name"
-
-        # Add basename to a list of scripts that are currently in config
-        current_scripts+=("$base_name")
-
-        if [ ! -f "$dest_file" ]; then
-            # New file
-            cp "$src_file" "$dest_file"
-            added+=("$base_name")
-        elif ! cmp -s "$src_file" "$dest_file"; then
-            # Changed file
-            cp "$src_file" "$dest_file"
-            updated+=("$base_name")
-        fi
-    done
-
-    # Determine which scripts to remove by comparing old and new lists
-    for script in "${existing_scripts[@]}"; do
-        is_current=false
-        for current in "${current_scripts[@]}"; do
-            if [[ "$script" == "$current" ]]; then
-                is_current=true
-                break
-            fi
-        done
-        # If a script existed before but is not in the new list, remove it
-        if ! $is_current; then
-            rm -f "$scripts_dir/$script"
-            removed+=("$script")
-        fi
-    done
-
-    # Report all changes
-    if [ ${#removed[@]} -gt 0 ]; then
-        for script in "${removed[@]}"; do
-            log "Removed userscript: $script"
-        done
-    fi
-
-    if [ ${#added[@]} -gt 0 ]; then
-        for script in "${added[@]}"; do
-            log "Added userscript: $script"
-        done
-    fi
-
-    if [ ${#updated[@]} -gt 0 ]; then
-        for script in "${updated[@]}"; do
-            log "Updated userscript: $script"
-        done
-    fi
-
-    # If no changes were made, stay silent
-    if [ ${#removed[@]} -eq 0 ] && [ ${#added[@]} -eq 0 ] && [ ${#updated[@]} -eq 0 ]; then
-        return 0
-    fi
+        # Silently skipping a typo'd path shipped an app without the script it asked for; set_ca and
+        # set_site both error on a path that is not there, so this one does too
+        [ ! -f "$file" ] && error "Userscript file not found: $file"
+        base_name=$(basename "$file")
+        cp "$file" "$scripts_dir/$base_name"
+        log "Added userscript: $base_name"
+    done < <(config_files "$1")
 }
 
 
@@ -782,14 +653,8 @@ set_site() {
     local src="$1"
     local dest="app/src/main/assets/site"
 
-    # Empty value: drop a previously bundled site
-    if [ -z "$src" ]; then
-        if [ -d "$dest" ]; then
-            rm -rf "$dest"
-            log "Bundled site removed"
-        fi
-        return 0
-    fi
+    # Empty value: sync_sources() unpacks the template's assets, which have no site/
+    [ -z "$src" ] && return 0
 
     # Relative paths are resolved against the config file location
     if [ -n "${CONFIG_DIR:-}" ] && [[ "$src" != /* ]]; then
@@ -1020,6 +885,29 @@ ORIGINAL_PWD="$PWD"
 
 # Change directory to the directory where make.sh resides (project root)
 try cd "$(dirname "$0")"
+
+# The Java package is fixed: `namespace` in build.gradle owns R/BuildConfig and resolves the relative
+# names in the manifest, while the application id (`ext.appId` in the generated config.gradle) is a
+# separate thing. Because the package no longer follows the config, sync_sources() can copy src/java/
+# in verbatim and the generated tree is the template plus the config's field values.
+readonly JAVA_PKG="com.myexample.webtoapk"
+readonly SRC_JAVA="app/src/main/java/com/myexample/webtoapk"
+
+# Usage only needs the script itself, so answer it before the wget/Java/SDK checks, which can prompt
+if [ $# -eq 0 ]; then
+    echo -e "${BOLD}Usage:${NC}"
+    echo -e "  ${BLUE}$0 keygen${NC}          - Generate signing key"
+    echo -e "  ${BLUE}$0 build${NC} [config]  - Apply configuration and build"
+    echo -e "  ${BLUE}$0 test${NC}            - Install and test APK via adb, show logs"
+    echo -e "  ${BLUE}$0 clean${NC}          - Remove generated sources and build files"
+    echo
+    echo -e "  ${BLUE}$0 apk${NC}             - Build APK from already generated sources"
+    echo -e "  ${BLUE}$0 aab${NC}             - Build AAB from already generated sources"
+    echo -e "  ${BLUE}$0 apply_config${NC}    - Apply settings from config file"
+	echo -e "  ${BLUE}$0 get_java${NC}        - Download OpenJDK 17 locally"
+    echo -e "  ${BLUE}$0 regradle${NC}        - Reinstall gradle. You don't need it"
+    exit 1
+fi
 
 export ANDROID_HOME=$PWD/cmdline-tools/
 migrate_keystore
