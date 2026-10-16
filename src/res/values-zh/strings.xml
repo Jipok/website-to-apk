@@ -13,4 +13,11 @@
     <string name="open_download_failed">无法打开该文件。</string>
     <string name="choose_file">选择文件</string>
     <string name="no_file_manager">无法打开文件管理器</string>
+    <string name="ssl_error_message">%1$s\n\n%2$s</string>
+    <string name="ssl_error_date">证书已过期或尚未生效</string>
+    <string name="ssl_error_host">证书属于其他站点</string>
+    <string name="ssl_error_untrusted">证书不受信任</string>
+    <string name="ssl_error_continue">继续</string>
+    <string name="auth_title">需要登录</string>
+    <string name="auth_message">%1$s\n\n%2$s</string>
 </resources>

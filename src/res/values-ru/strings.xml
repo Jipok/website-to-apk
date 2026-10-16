@@ -13,4 +13,11 @@
     <string name="open_download_failed">Не удалось открыть файл.</string>
     <string name="choose_file">Выберите файл</string>
     <string name="no_file_manager">Невозможно открыть файловый менеджер</string>
+    <string name="ssl_error_message">%1$s\n\n%2$s</string>
+    <string name="ssl_error_date">Срок действия сертификата истёк или ещё не наступил</string>
+    <string name="ssl_error_host">Сертификат выдан для другого сайта</string>
+    <string name="ssl_error_untrusted">Сертификату нельзя доверять</string>
+    <string name="ssl_error_continue">Продолжить</string>
+    <string name="auth_title">Требуется вход</string>
+    <string name="auth_message">%1$s\n\n%2$s</string>
 </resources>

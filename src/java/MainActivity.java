@@ -1190,23 +1190,17 @@ public class MainActivity extends AppCompatActivity {
             }
 
             final AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
-            builder.setMessage(R.string.notification_error_ssl_cert_invalid);
+            builder.setTitle(R.string.notification_error_ssl_cert_invalid);
+            // Which site, and what is wrong with it: "the certificate is bad" is not a question a
+            // user can answer, and this dialog is the only place the opt-in is asked for.
+            builder.setMessage(getString(R.string.ssl_error_message, failingUrl,
+                    getString(sslErrorReason(error.getPrimaryError()))));
             // Back or an outside tap must answer the handler too, or the load waits forever
             builder.setOnCancelListener(dialog -> handler.cancel());
 
-            builder.setPositiveButton("continue", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    handler.proceed();
-                }
-            });
+            builder.setPositiveButton(R.string.ssl_error_continue, (dialog, which) -> handler.proceed());
 
-            builder.setNegativeButton("cancel", new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    handler.cancel();
-                }
-            });
+            builder.setNegativeButton(android.R.string.cancel, (dialog, which) -> handler.cancel());
             final AlertDialog dialog = builder.create();
             dialog.show();
         }
@@ -1254,24 +1248,22 @@ public class MainActivity extends AppCompatActivity {
             final EditText usernameInput = dialogView.findViewById(R.id.username);
             final EditText passwordInput = dialogView.findViewById(R.id.password);
 
+            // The host and realm are what tells the user who is asking — a bare "Authentication
+            // Required" teaches them to type their password into anything that asks.
+            String where = host == null ? "" : host;
+            if (realm != null && !realm.isEmpty()) where = getString(R.string.auth_message, where, realm);
+
             new AlertDialog.Builder(MainActivity.this)
-                .setTitle("Authentication Required")
+                .setTitle(R.string.auth_title)
+                .setMessage(where)
                 .setView(dialogView)
-                .setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        // Retrieve user input and proceed with HTTP authentication
-                        String user = usernameInput.getText().toString();
-                        String pass = passwordInput.getText().toString();
-                        handler.proceed(user, pass);
-                    }
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    // Retrieve user input and proceed with HTTP authentication
+                    String user = usernameInput.getText().toString();
+                    String pass = passwordInput.getText().toString();
+                    handler.proceed(user, pass);
                 })
-                .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        handler.cancel();
-                    }
-                })
+                .setNegativeButton(android.R.string.cancel, (dialog, which) -> handler.cancel())
                 .setOnCancelListener(dialog -> handler.cancel())
                 .show();
         }
@@ -1532,6 +1524,23 @@ public class MainActivity extends AppCompatActivity {
     }
 
     boolean doubleBackToExitPressedOnce = false;
+
+    /* SslError's codes as something a user can act on. SSL_DATE_INVALID covers both "expired" and
+       "not valid yet" — the platform does not say which — and everything else is "not trusted"
+       except a name mismatch, which is the case a user most needs told apart: it usually means a
+       wrong-host certificate, not an attacker. */
+    private static int sslErrorReason(int primaryError) {
+        switch (primaryError) {
+            case SslError.SSL_IDMISMATCH:
+                return R.string.ssl_error_host;
+            case SslError.SSL_EXPIRED:
+            case SslError.SSL_NOTYETVALID:
+            case SslError.SSL_DATE_INVALID:
+                return R.string.ssl_error_date;
+            default:
+                return R.string.ssl_error_untrusted;
+        }
+    }
 
     // Android 16 does not call onBackPressed for apps targeting 36 (predictive back is on by
     // default), so the same logic lives in a back callback, which every release dispatches.

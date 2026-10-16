@@ -263,10 +263,17 @@ ca = my_root_ca.pem     # Relative to the config file, space-separated list is a
 edited. The name must be lowercase (`my_ca.pem`) because it becomes the resource name. The list is
 rebuilt on every build, so removing a certificate from the config removes it from the app.
 
-A certificate error on the main page is **cancelled** by default. `allowSslErrors = true` adds a
-"continue" button to that error page instead, which lets the user through anyway — the same escape
-hatch a browser offers, but it is off unless you ask for it, and it never applies to background
-requests.
+A certificate error on the main page is **cancelled** by default. `allowSslErrors = true` shows a
+dialog instead, which lets the user through anyway — the same escape hatch a browser offers, but it
+is off unless you ask for it, and it never applies to background requests. The dialog names the site
+and what is wrong with its certificate (expired, not valid yet, issued for a different host, or not
+trusted), because "continue anyway" is not a question a user can answer without knowing whom they
+are trusting.
+
+Basic Auth is answered in one of two ways: `basicAuth = login:password` signs in automatically (once
+per host and realm, and only for `mainURL`'s host, or its subdomains with `allowSubdomains`), and
+anything else — a different host, a second challenge, no `basicAuth` at all — shows the prompt, which
+names the host and the realm it is asking for.
 
 </details>
 

@@ -13,4 +13,11 @@
     <string name="open_download_failed">No se puede abrir el archivo.</string>
     <string name="choose_file">Elegir un archivo</string>
     <string name="no_file_manager">No se puede abrir un gestor de archivos.</string>
+    <string name="ssl_error_message">%1$s\n\n%2$s</string>
+    <string name="ssl_error_date">El certificado ha caducado o aún no es válido</string>
+    <string name="ssl_error_host">El certificado es de otro sitio</string>
+    <string name="ssl_error_untrusted">No se confía en el certificado</string>
+    <string name="ssl_error_continue">Continuar</string>
+    <string name="auth_title">Se requiere autenticación</string>
+    <string name="auth_message">%1$s\n\n%2$s</string>
 </resources>

@@ -12,4 +12,11 @@
     <string name="open_download_failed">Cannot open the file.</string>
     <string name="choose_file">Choose a file</string>
     <string name="no_file_manager">Cannot open a file manager.</string>
+    <string name="ssl_error_message">%1$s\n\n%2$s</string>
+    <string name="ssl_error_date">The certificate has expired or is not valid yet</string>
+    <string name="ssl_error_host">The certificate is for a different site</string>
+    <string name="ssl_error_untrusted">The certificate is not trusted</string>
+    <string name="ssl_error_continue">Continue</string>
+    <string name="auth_title">Authentication Required</string>
+    <string name="auth_message">%1$s\n\n%2$s</string>
 </resources>

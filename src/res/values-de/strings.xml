@@ -13,4 +13,11 @@
     <string name="open_download_failed">Datei kann nicht geöffnet werden.</string>
     <string name="choose_file">Datei auswählen</string>
     <string name="no_file_manager">Dateimanager kann nicht geöffnet werden.</string>
+    <string name="ssl_error_message">%1$s\n\n%2$s</string>
+    <string name="ssl_error_date">Das Zertifikat ist abgelaufen oder noch nicht gültig</string>
+    <string name="ssl_error_host">Das Zertifikat gilt für eine andere Website</string>
+    <string name="ssl_error_untrusted">Dem Zertifikat wird nicht vertraut</string>
+    <string name="ssl_error_continue">Fortfahren</string>
+    <string name="auth_title">Anmeldung erforderlich</string>
+    <string name="auth_message">%1$s\n\n%2$s</string>
 </resources>
