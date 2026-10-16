@@ -148,6 +148,8 @@ deeplink = example.com
 deeplink = example.com www.example.com
 ```
 
+A link that arrives this way becomes the app's current URL, so the linked host counts as the app's own (its links stay inside the app instead of opening a browser). It does **not** move the configured `cookies` or `basicAuth` credentials: those stay bound to the site the config describes, and a link naming some other host never gets them.
+
 </details>
 
 <details>
