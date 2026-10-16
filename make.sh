@@ -929,7 +929,10 @@ fi
 
 command -v adb >/dev/null 2>&1 || warn "adb not found. './make.sh test' will not work"
 
-if [ ! -d "$ANDROID_HOME" ]; then
+# The SDK is only needed to build. `keygen` runs keytool from the JDK and nothing else, and the
+# README asks for the key before the first build: prompting for 460 MB of tools at that point is
+# the worst place for it.
+if [ "${1:-}" != "keygen" ] && [ ! -d "$ANDROID_HOME" ]; then
     warn "Android Command Line Tools not found: ./cmdline-tools"
     read -p "Do you want to download them now? (y/n) " -n 1 -r
     echo
@@ -940,19 +943,9 @@ if [ ! -d "$ANDROID_HOME" ]; then
     fi
 fi
 
-if [ $# -eq 0 ]; then
-    echo -e "${BOLD}Usage:${NC}"
-    echo -e "  ${BLUE}$0 keygen${NC}          - Generate signing key"
-    echo -e "  ${BLUE}$0 build${NC} [config]  - Apply configuration and build"
-    echo -e "  ${BLUE}$0 test${NC}            - Install and test APK via adb, show logs"
-    echo -e "  ${BLUE}$0 clean${NC}          - Remove generated sources and build files"
-    echo
-    echo -e "  ${BLUE}$0 apk${NC}             - Build APK from already generated sources"
-    echo -e "  ${BLUE}$0 aab${NC}             - Build AAB from already generated sources"
-    echo -e "  ${BLUE}$0 apply_config${NC}    - Apply settings from config file"
-	echo -e "  ${BLUE}$0 get_java${NC}        - Download OpenJDK 17 locally"
-    echo -e "  ${BLUE}$0 regradle${NC}        - Reinstall gradle. You don't need it"
-    exit 1
+# `test` is a shell builtin, so the function is named test_apk and mapped here
+if [ "${1:-}" = "test" ]; then
+    set -- test_apk "${@:2}"
 fi
 
 eval $@
