@@ -169,9 +169,7 @@ public class MainActivity extends AppCompatActivity {
     boolean JSEnabled = true;
     boolean JSCanOpenWindowsAutomatically = true;
     boolean DomStorageEnabled = true;
-    boolean DatabaseEnabled = true;
     boolean MediaPlaybackRequiresUserGesture = true;
-    boolean SavePassword = true;
     boolean AllowFileAccess = true;
     boolean AllowFileAccessFromFileURLs = true;
     boolean showDetailsOnErrorScreen = false;
@@ -281,9 +279,14 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setJavaScriptCanOpenWindowsAutomatically(JSCanOpenWindowsAutomatically);
         webSettings.setGeolocationEnabled(geolocationEnabled);
         webSettings.setDomStorageEnabled(DomStorageEnabled);
-        webSettings.setDatabaseEnabled(DatabaseEnabled);
+        // Web SQL: removed from current WebView, where this is an explicit no-op ("Intentional
+        // no-op" in ContentSettingsAdapter), but still honoured by WebView 76 — whose setting
+        // defaults to *off*. Pinned to false so an old engine behaves like a new one instead of
+        // exposing a capability that depends on the installed WebView.
+        webSettings.setDatabaseEnabled(false);
         webSettings.setMediaPlaybackRequiresUserGesture(MediaPlaybackRequiresUserGesture);
-        webSettings.setSavePassword(SavePassword);
+        // setSavePassword is deliberately not called: it has been an explicit no-op in the WebView
+        // implementation since at least WebView 76, and there is no password store behind it.
         webSettings.setAllowFileAccess(AllowFileAccess);
         webSettings.setAllowFileAccessFromFileURLs(AllowFileAccessFromFileURLs);
         webSettings.setUseWideViewPort(true);

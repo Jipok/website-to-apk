@@ -105,16 +105,14 @@ The following advanced options can also be configured:
 ```ini
 versionCode = 1                       # Android version code (integer, must increase on each release)
 versionName = 1.0                     # Human-readable version shown to users
-cookies = "key1=value1; key2=value2"  # Cookies for mainURL host
-basicAuth = login:password            # HTTP Basic Auth credentials for mainURL host
+cookies = "key1=value1; key2=value2"  # Cookies for the configured site, never for a deeplink host
+basicAuth = login:password            # HTTP Basic Auth credentials for the configured site
 userAgent = "MyCustomUserAgent/1.0"   # Custom UserAgent header
 JSEnabled = true                      # Enable JavaScript execution
 JSCanOpenWindowsAutomatically = true  # Allow JS to open new windows/popups
 
 DomStorageEnabled = true              # Enable HTML5 DOM storage
-DatabaseEnabled = true                # Enable HTML5 Web SQL Database
 MediaPlaybackRequiresUserGesture = true  # Require a tap before media can play
-SavePassword = true                   # Allow saving passwords in WebView
 AllowFileAccess = true
 AllowFileAccessFromFileURLs = true
 forceLandscapeMode = false            # Lock screen orientation to landscape (Android 15+ ignores it on large screens)
@@ -313,10 +311,17 @@ If you need real push, open an issue. An **optional** integration (FCM, HMS or a
 - Minimum Android API: 26 (Android 8.0)
 - Build tools version: 33.0.2
 - Gradle version: 7.4
-- Required Java version: 17
+- Required Java version: 17 or newer (a JDK, not a JRE)
 
 ## Notes
 
+- Web SQL is off and passwords are never saved, so those two settings are no longer config keys.
+  `setSavePassword` has been an explicit no-op in the WebView implementation since at least WebView
+  76 and there is no password store behind it. `setDatabaseEnabled` is a no-op on current WebView
+  (Web SQL was removed from Chromium), but an old engine still honours it — so it is pinned to
+  `false`, which makes an old device behave like a new one instead of exposing a capability that
+  depends on the installed WebView. A config that still sets `SavePassword` or `DatabaseEnabled`
+  fails to apply and the line has to be deleted
 - All app data is stored in the app's private directory
 - The keystore `my-release-key.jks` (in the repository root) password is set to "123456" by default
 - Internet permission is required and automatically included
