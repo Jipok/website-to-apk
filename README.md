@@ -81,7 +81,7 @@ scripts = script1*.js script20.js  # Load specific script files
 
 ### How Userscripts Work
 
-- Scripts can use Tampermonkey/Violentmonkey/etc [`@match`](https://violentmonkey.github.io/api/metadata-block/#match--exclude-match) and [`@run-at`](https://violentmonkey.github.io/api/metadata-block/#run-at) directives, other ignored
+- Scripts can use Tampermonkey/Violentmonkey/etc [`@match`](https://violentmonkey.github.io/api/metadata-block/#match--exclude-match) and [`@run-at`](https://violentmonkey.github.io/api/metadata-block/#run-at) directives, other ignored. `@match` is a glob: `*` is the only wildcard, every other character (`?`, `+`, `(`, `.`) is literal
 - If no `@match` is specified, the script will run on all pages
 - The `GM_*` helpers below are injected by `helpers.js`
 - There are `toast("short message")` function
@@ -231,10 +231,14 @@ The app injects a `window.WebToApk` object into every page. The methods are avai
 | `removeDownload(id)` | Delete one of the app's downloads — record and file — and return `true` if it went. |
 | `openDownloadedFile(id)` | Open a finished download with the system viewer. |
 | `shareDownloadedFile(id)` | Send a finished download to another app. |
+| `appendChunk(base64)` | One blob chunk, already base64-encoded. Returns `false` if the bytes did not land — no destination, a full disk, a revoked document. |
+| `finishSave(ok)` | End a blob export; `ok = false` (or a failed chunk before it) shows the "download failed" toast. |
 
 See also the hooks `WebToApk.onPullToRefresh` (above), `WebToApk.onDownloadStarted(id, url)` and `WebToApk.onDownloadComplete(id)`.
 
 Downloads are handed to `DownloadManager`, so they keep going while the app is backgrounded or even killed. `getDownloads()` is therefore the source of truth: it reports `bytes`/`total` for an in-flight download, so a page can draw its own progress bar, plus a `status` of `pending`, `running`, `paused`, `successful` or `failed` (`total` stays `-1` until the size is known). The two hooks are best-effort — a page-defined callback only exists while the app is alive — so use them as a nudge to re-check `getDownloads()`, and poll it at a sane rate rather than in a tight loop. Downloads are scoped to the app: `getDownloads()` and `removeDownload()` only ever see files this app downloaded, and removing one deletes the file from `Downloads/` — no permission and no dialog are involved. The ids are remembered across restarts, so a page can clean up after itself. Every entry also carries the `url` the download was started from, and `onDownloadStarted(id, url)` hands it over at start time — that is the only way to tell which id belongs to which request when several run at once, since the hook itself carries nothing but the id.
+
+Downloads a page generates itself — `blob:` and `data:` URLs, which `DownloadManager` cannot fetch — take the system file picker instead. Clicking an `<a download href="blob:...">` asks the user where to put it, then `helpers.js` streams the bytes there in 1 MB chunks, so memory stays flat no matter how large the file is. A page driving that protocol itself calls `appendChunk(base64)` and then `finishSave(ok)`; a chunk answers `false` when the bytes did not land (no destination, a full disk, a document the user or the provider revoked), and `finishSave` shows the "download failed" toast for either kind of failure. Nothing is reported as saved unless it was: the write is the only place that can tell, so its failure is not swallowed.
 
 `navigator.mediaSession` (metadata, playback state, position, action handlers) is forwarded to the native media notification automatically — no direct calls needed.
 
