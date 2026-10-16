@@ -572,11 +572,7 @@ set_ca() {
     tmp_file=$(mktemp)
     cp "$nsc_file" "$tmp_file"
 
-    for src in $@; do
-        # Relative paths are resolved against the config file location
-        if [ -n "${CONFIG_DIR:-}" ] && [[ "$src" != /* ]]; then
-            src="$CONFIG_DIR/$src"
-        fi
+    while IFS= read -r src; do
         [ ! -f "$src" ] && error "CA file not found: $src"
 
         # The file name becomes the res/raw resource name, so it must be a valid one
@@ -591,13 +587,10 @@ set_ca() {
         # Trust it, unless the template already references it
         grep -q "@raw/$name" "$tmp_file" && continue
         sed -i "s#^\([[:space:]]*\)<certificates src=\"system\" />#&\n\1<certificates src=\"@raw/$name\" />#" "$tmp_file"
-    done
+    done < <(config_files "$1")
 
-    if ! diff -q "$nsc_file" "$tmp_file" >/dev/null; then
-        try mv "$tmp_file" "$nsc_file"
-    else
-        rm -f "$tmp_file"
-    fi
+    # res/ is unpacked fresh, so the template NSC is the baseline every run: no diff to guard
+    try mv "$tmp_file" "$nsc_file"
 }
 
 
