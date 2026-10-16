@@ -21,10 +21,10 @@ import android.content.IntentFilter;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class MediaPlaybackService extends Service {
     public static final String NOTIFICATION_CHANNEL_ID = "web_app_notifications";
@@ -43,9 +43,25 @@ public class MediaPlaybackService extends Service {
     public static final String ACTION_NEXT = "com.myexample.webtoapk.NEXT";
     public static final String ACTION_PREVIOUS = "com.myexample.webtoapk.PREVIOUS";
 
-    // Action for broadcasting to MainActivity
-    public static final String BROADCAST_MEDIA_ACTION = "com.myexample.webtoapk.BROADCAST_MEDIA_ACTION";
-    public static final String EXTRA_MEDIA_ACTION = "EXTRA_MEDIA_ACTION";
+    /* The notification's buttons come back through MediaSession and the page has to hear about them.
+       That used to be a LocalBroadcastManager broadcast; androidx deprecated the library (no further
+       releases) and it is ~12 KB of classes for one delivery inside this process, so the activity —
+       the only consumer, and in the same process, which is what LocalBroadcastManager required
+       anyway — registers a plain listener instead. */
+    public interface MediaActionListener {
+        void onMediaAction(String action);
+    }
+
+    private static final List<MediaActionListener> mediaActionListeners = new CopyOnWriteArrayList<>();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    public static void addMediaActionListener(MediaActionListener listener) {
+        mediaActionListeners.add(listener);
+    }
+
+    public static void removeMediaActionListener(MediaActionListener listener) {
+        mediaActionListeners.remove(listener);
+    }
 
 
     private static final int NOTIFICATION_ID = 101;
@@ -440,9 +456,14 @@ public class MediaPlaybackService extends Service {
     
     // --- Communication back to WebView ---
     private void sendActionToWebView(String action) {
-        Intent intent = new Intent(BROADCAST_MEDIA_ACTION);
-        intent.putExtra(EXTRA_MEDIA_ACTION, action);
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+        // LocalBroadcastManager always delivered on the main thread, and the listener ends in
+        // WebView.evaluateJavascript, which has to run there. A MediaSession callback is not
+        // promised to be on the main thread, so hop — one post per button press.
+        mainHandler.post(() -> {
+            for (MediaActionListener listener : mediaActionListeners) {
+                listener.onMediaAction(action);
+            }
+        });
     }
     
     @Override

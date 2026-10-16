@@ -85,7 +85,6 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.core.graphics.Insets;
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.webkit.PermissionRequest;
 import java.util.ArrayList;
@@ -119,18 +118,20 @@ public class MainActivity extends AppCompatActivity {
     private UserScriptManager userScriptManager;
     private ProgressBar spinner;
     private SwipeRefreshLayout swipeRefresh;
-    private View mainLayout;
+    private ViewGroup mainLayout;   // android.R.id.content: the error screen is stacked onto it
     private View errorLayout;
-    private ViewGroup parentLayout;
-    private boolean errorOccurred = false; // For WebView after tryAgain
+    private View appLayout;         // R.id.appRoot, hidden while the error screen is up
+    private boolean downloadReceiverRegistered;
     private ValueCallback<Uri[]> mFilePathCallback;       // Image upload
     private ActivityResultLauncher<Intent> fileChooserLauncher; // Image upload
     private ActivityResultLauncher<Intent> saveTarget; // Blob export destination (SAF)
     // Written on main (the SAF picker) and used from the JavaBridge thread (appendChunk)
     private volatile OutputStream saveStream;
+    // Set by appendChunk (JavaBridge thread), cleared when a target is picked and when finishSave
+    // reports it, so the page's own `ok` is not the only word on whether the bytes landed
+    private volatile boolean saveFailed;
     private BroadcastReceiver downloadCompleteReceiver; // Reports finished downloads to the page
-    private WebAppInterface webAppInterface;
-    private BroadcastReceiver mediaActionReceiver;
+    private MediaPlaybackService.MediaActionListener mediaActionListener;
     private PermissionRequest currentPermissionRequest;
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigin;
@@ -237,8 +238,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
         setContentView(R.layout.activity_main);
+        // The content view, not its parent: the error screen goes on top of it with addContentView()
+        // (a public Activity API). Reaching for the parent meant assuming the DecorView's own layout
+        // — and it left the error screen outside the inset padding applied below.
         mainLayout = findViewById(android.R.id.content);
-        parentLayout = (ViewGroup) mainLayout.getParent();
+        appLayout = findViewById(R.id.appRoot);
         assetLoader = new WebViewAssetLoader.Builder()
             .setDomain(LOCAL_SITE_DOMAIN)
             .addPathHandler("/", this::handleLocalSiteRequest)
@@ -484,18 +488,12 @@ public class MainActivity extends AppCompatActivity {
             webview.loadUrl(mainURL);
         }
 
-        mediaActionReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                if (intent != null && MediaPlaybackService.BROADCAST_MEDIA_ACTION.equals(intent.getAction())) {
-                    String action = intent.getStringExtra(MediaPlaybackService.EXTRA_MEDIA_ACTION);
-                    if (action != null) {
-                        executeMediaActionInWebView(action);
-                    }
-                }
+        mediaActionListener = action -> {
+            if (action != null) {
+                executeMediaActionInWebView(action);
             }
         };
-        LocalBroadcastManager.getInstance(this).registerReceiver(mediaActionReceiver, new IntentFilter(MediaPlaybackService.BROADCAST_MEDIA_ACTION));
+        MediaPlaybackService.addMediaActionListener(mediaActionListener);
     }
 
     private void executeMediaActionInWebView(String action) {
@@ -641,18 +639,62 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
-        unregisterReceiver(downloadCompleteReceiver);
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(mediaActionReceiver);
+        // Nothing in here may throw: this runs on the way out, and after a crash inside onCreate a
+        // second exception would hide the first. `unregisterReceiver` throws for a receiver that was
+        // never registered (registration happens late in onCreate).
+        if (downloadReceiverRegistered) unregisterReceiver(downloadCompleteReceiver);
+        MediaPlaybackService.removeMediaActionListener(mediaActionListener);
         Intent intent = new Intent(this, MediaPlaybackService.class);
         stopService(intent);
+
+        // A blob export in flight would otherwise keep the file descriptor until the process dies
+        OutputStream stream = saveStream;   // read once: finishSave may clear it meanwhile
+        saveStream = null;
+        if (stream != null) {
+            try {
+                stream.close();
+            } catch (IOException e) {
+                Log.w("WebToApk", "Cannot close the save stream", e);
+            }
+        }
+        if (webview != null) {
+            ViewGroup parent = (ViewGroup) webview.getParent();
+            if (parent != null) parent.removeView(webview);
+            webview.stopLoading();
+            webview.destroy();
+            webview = null;
+        }
+        super.onDestroy();
     }
 
     // The URL carried by a VIEW intent, or null when there is none
     private String urlFromIntent(Intent intent) {
         if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) return null;
         Uri data = intent.getData();
-        return data == null ? null : data.toString();
+        if (data == null) return null;
+        /* Anything installed on the device can send this activity an explicit VIEW intent — it is
+           exported, being the launcher — so the URL has to be checked here, not by the manifest
+           filter, which an explicit intent bypasses. Two refusals:
+
+             - a scheme other than http(s). `javascript:` used to run in the current document's
+               origin, i.e. on the logged-in site (that is the probe technique in notes/traps.md),
+               and `file://` was accepted too — a local page carrying the whole JS bridge.
+             - a host that is not ours. It used to become mainURL, so it counted as internal and got
+               the bridge on an attacker's page. sameSite() is deliberately the same check the Basic
+               Auth credentials use, and it is bidirectional on purpose: `deeplink = youtube.com`
+               with `mainURL = https://m.youtube.com` has to pass. */
+        String scheme = data.getScheme();
+        if (!"http".equals(scheme) && !"https".equals(scheme)) {
+            Log.w("WebToApk", "Ignoring deeplink with scheme: " + scheme);
+            return null;
+        }
+        String host = data.getHost(), configured = Uri.parse(configuredMainURL).getHost();
+        if (host == null || configured == null
+                || (allowSubdomains ? !sameSite(host, configured) : !host.equals(configured))) {
+            Log.w("WebToApk", "Ignoring deeplink for a foreign host: " + host);
+            return null;
+        }
+        return data.toString();
     }
 
     // The activity is singleTop: a deeplink that arrives while it is alive lands here
@@ -1423,12 +1465,12 @@ public class MainActivity extends AppCompatActivity {
                     case ERROR_UNSUPPORTED_AUTH_SCHEME:
                     case ERROR_UNSUPPORTED_SCHEME:
                         Log.e("WebToApk", "Major error: " + errorCode + " - " + errorDescription + " url: " + request.getUrl());
-                        errorOccurred = true;
-                        // Reuse the screen: a second failure used to stack another copy on top of it
+                        // Reuse the screen: a second failure must not stack another copy on top of it
                         if (errorLayout == null) {
-                            errorLayout = getLayoutInflater().inflate(R.layout.error, parentLayout, false);
-                            parentLayout.removeView(mainLayout);
-                            parentLayout.addView(errorLayout);
+                            errorLayout = getLayoutInflater().inflate(R.layout.error, mainLayout, false);
+                            appLayout.setVisibility(View.GONE);
+                            addContentView(errorLayout, new ViewGroup.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
                         }
                         if (showDetailsOnErrorScreen) {
                             TextView errorTextView = errorLayout.findViewById(R.id.errorText);
@@ -1552,17 +1594,25 @@ public class MainActivity extends AppCompatActivity {
         return mime != null ? mime : "text/plain";
     }
 
+    /* The one way out of the error screen: Try Again and a navigation that starts while it is up both
+       go through here. `errorLayout != null` *is* the error state — the boolean it replaced was set
+       and cleared in exactly the same places. */
+    private void hideErrorScreen() {
+        mainLayout.removeView(errorLayout);
+        errorLayout = null;
+        appLayout.setVisibility(View.VISIBLE);
+        if (webview != null) {   // renderer gone: nothing left to fade in
+            webview.setAlpha(0f);
+            spinner.setVisibility(View.VISIBLE);
+        }
+    }
+
     /* Retry Loading the page */
     public void tryAgain(View v) {
         if (webview == null) {   // renderer gone, nothing to reload
             return;
         }
-        parentLayout.removeView(errorLayout);
-        errorLayout = null;
-        parentLayout.addView(mainLayout);
-        webview.setAlpha(0f);
-        spinner.setVisibility(View.VISIBLE);
-        errorOccurred = false;
+        hideErrorScreen();
         webview.reload();
     }
 
