@@ -560,12 +560,16 @@ public class MainActivity extends AppCompatActivity {
     /* Hand a finished download over to another app. getUriForDownloadedFile only ever grants
        access to downloads of ours, so no storage permission is involved */
     private void handOffDownload(String id, String action) {
-        new Handler(Looper.getMainLooper()).post(() -> {
+        uiHandler.post(() -> {
             try {
                 DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
                 long downloadId = Long.parseLong(id);
                 Uri uri = manager.getUriForDownloadedFile(downloadId);
                 if (uri == null) throw new IllegalStateException("download is not finished: " + id);
+                // The scheme is the story of this handoff (content:// on every API this app supports;
+                // see "getUriForDownloadedFile returns file://" in notes/review-claims.md, refuted) and
+                // it is what the device suite asserts on — the VIEW intent may find no viewer, this hit.
+                Log.d("WebToApk", "Handing off download " + id + " to " + action + " as " + uri.getScheme());
                 String mime = manager.getMimeTypeForDownloadedFile(downloadId);
                 Intent intent = new Intent(action);
                 if (Intent.ACTION_SEND.equals(action)) {
@@ -757,28 +761,9 @@ public class MainActivity extends AppCompatActivity {
         if (webview != null) webview.saveState(outState);
     }
 
-    // TODO idk what do with this. rly need?
-    // @Override
-    // protected void onPause() {
-    //     super.onPause();
-    //     Log.d("WebToApk", "onPause");
-    //     if (webview != null) {
-    //         Log.d("WebToApk", "onPause 2");
-    //         webview.onPause();
-    //     }
-    // }
-    // @Override
-    // protected void onResume() {
-    //     super.onResume();
-    //     Log.d("WebToApk", "onResume");
-    //     if (webview != null) {
-    //         Log.d("WebToApk", "onResume 2");
-    //         webview.onResume();
-    //     }
-    // }
-
-    /* DownloadManager writes into the public Downloads directory, so before API 29 the enqueue is
-       preceded by a WRITE_EXTERNAL_STORAGE round-trip (see onRequestPermissionsResult) */
+    // The WebView is deliberately not paused in onPause / resumed in onResume: see TODO.md
+    /* The ids of the downloads this app started, so a list query can be filtered by them and a foreign
+       id refused. Persisted: the Downloads rows outlive the process. */
     private void loadOwnDownloads() {
         ownDownloads.clear();
         String stored = getSharedPreferences(DOWNLOADS_PREFS, MODE_PRIVATE)
@@ -974,12 +959,7 @@ public class MainActivity extends AppCompatActivity {
         public boolean onJsAlert(WebView view, String url, String message, final android.webkit.JsResult result) {
             new AlertDialog.Builder(MainActivity.this)
                 .setMessage(message)
-                .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        result.confirm();
-                    }
-                })
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
                 .setCancelable(false)
                 .create()
                 .show();
@@ -990,18 +970,8 @@ public class MainActivity extends AppCompatActivity {
         public boolean onJsConfirm(WebView view, String url, String message, final JsResult result) {
             new AlertDialog.Builder(MainActivity.this)
                 .setMessage(message)
-                .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        result.confirm();
-                    }
-                })
-                .setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        result.cancel();
-                    }
-                })
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm())
+                .setNegativeButton(android.R.string.cancel, (dialog, which) -> result.cancel())
                 .setCancelable(false)
                 .create()
                 .show();
@@ -1016,18 +986,8 @@ public class MainActivity extends AppCompatActivity {
             new AlertDialog.Builder(MainActivity.this)
                 .setMessage(message)
                 .setView(input)
-                .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        result.confirm(input.getText().toString());
-                    }
-                })
-                .setNegativeButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        result.cancel();
-                    }
-                })
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> result.confirm(input.getText().toString()))
+                .setNegativeButton(android.R.string.cancel, (dialog, which) -> result.cancel())
                 .setCancelable(false)
                 .create()
                 .show();
@@ -1314,12 +1274,7 @@ public class MainActivity extends AppCompatActivity {
                         new AlertDialog.Builder(view.getContext())
                             .setTitle(R.string.external_link)
                             .setMessage(R.string.open_in_external_app)
-                            .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(DialogInterface dialog, int which) {
-                                    openExternally(url, view);
-                                }
-                            })
+                            .setPositiveButton(android.R.string.yes, (dialog, which) -> openExternally(url, view))
                             .setNegativeButton(android.R.string.no, null)
                             .show();
                     } else {
@@ -1405,12 +1360,9 @@ public class MainActivity extends AppCompatActivity {
                     new AlertDialog.Builder(view.getContext())
                         .setTitle(R.string.external_link)
                         .setMessage(R.string.open_in_browser)
-                        .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                Log.d("WebToApk", "\033[1;34mExternal link:\033[0m '" + url);
-                                openExternally(url, view);
-                            }
+                        .setPositiveButton(android.R.string.yes, (dialog, which) -> {
+                            Log.d("WebToApk", "\033[1;34mExternal link:\033[0m '" + url);
+                            openExternally(url, view);
                         })
                         .setNegativeButton(android.R.string.no, null)
                         .show();
@@ -1603,12 +1555,7 @@ public class MainActivity extends AppCompatActivity {
                     doubleBackToExitPressedOnce = true;
                     Toast.makeText(MainActivity.this, R.string.exit_app, Toast.LENGTH_SHORT).show();
 
-                    new Handler().postDelayed(new Runnable() {
-                        @Override
-                        public void run() {
-                            doubleBackToExitPressedOnce = false;
-                        }
-                    }, 2000);
+                    uiHandler.postDelayed(() -> doubleBackToExitPressedOnce = false, 2000);
                 }
             }
         });
@@ -1707,7 +1654,7 @@ public class MainActivity extends AppCompatActivity {
         // Blob export: ask for a destination, then receive the bytes in chunks
         @JavascriptInterface
         public void pickSaveTarget(String filename, String mime) {
-            new Handler(Looper.getMainLooper()).post(() -> saveTarget.launch(
+            uiHandler.post(() -> saveTarget.launch(
                 new Intent(Intent.ACTION_CREATE_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
                     .setType(mime == null || mime.isEmpty() ? "application/octet-stream" : mime)
@@ -1857,7 +1804,7 @@ public class MainActivity extends AppCompatActivity {
 
         /* Hand the answer back on the main thread: evaluateJavascript may not run on another one */
         private void answer(String id, String json) {
-            new Handler(Looper.getMainLooper()).post(() -> {
+            uiHandler.post(() -> {
                 if (webview != null) {
                     webview.evaluateJavascript("window.__webtoapkHttpDone&&window.__webtoapkHttpDone("
                         + JSONObject.quote(id) + "," + JSONObject.quote(json) + ")", null);
@@ -1925,24 +1872,12 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void showShortToast(String message) {
-            Handler mainHandler = new Handler(Looper.getMainLooper());
-            mainHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show();
-                }
-            });
+            uiHandler.post(() -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show());
         }
 
         @JavascriptInterface
         public void showLongToast(String message) {
-            Handler mainHandler = new Handler(Looper.getMainLooper());
-            mainHandler.post(new Runnable() {
-                @Override
-                public void run() {
-                    Toast.makeText(context, message, Toast.LENGTH_LONG).show();
-                }
-            });
+            uiHandler.post(() -> Toast.makeText(context, message, Toast.LENGTH_LONG).show());
         }
 
         @JavascriptInterface
@@ -1958,7 +1893,7 @@ public class MainActivity extends AppCompatActivity {
         public void requestNotificationPermission() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 // We need to run this on the main thread
-                new Handler(Looper.getMainLooper()).post(() -> {
+                uiHandler.post(() -> {
                     if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                         // Remember the ask: "never asked" and "denied for good" both report no
                         // rationale, so this flag is the only way to tell them apart
@@ -1980,7 +1915,7 @@ public class MainActivity extends AppCompatActivity {
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                     Log.w("WebToApk", "Notification permission not granted. Cannot show notification.");
                     // Optionally, inform the user via a Toast that permission is needed.
-                    new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(context, "Notification permission is required", Toast.LENGTH_LONG).show());
+                    uiHandler.post(() -> Toast.makeText(context, "Notification permission is required", Toast.LENGTH_LONG).show());
                     return;
                 }
             }
@@ -2017,10 +1952,8 @@ public class MainActivity extends AppCompatActivity {
             shareIntent.putExtra(Intent.EXTRA_TEXT, shareBody);
 
             // Show chooser
-            context.startActivity(
-                Intent.createChooser(shareIntent, title == null ? "Share" : title)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            );
+            // `context` is the activity, so a chooser needs no FLAG_ACTIVITY_NEW_TASK
+            context.startActivity(Intent.createChooser(shareIntent, title == null ? "Share" : title));
         }
 
 
@@ -2098,7 +2031,7 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void clearAppCache() {
-            new Handler(Looper.getMainLooper()).post(() -> {
+            uiHandler.post(() -> {
                 if (webview != null) {
                     webview.clearCache(true);
                     Log.d("WebToApk", "Cache cleared via WebToAPK.clearAppCache() from js");
