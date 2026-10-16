@@ -197,9 +197,6 @@ public class MediaPlaybackService extends Service {
             case ACTION_PAUSE:
                 sendActionToWebView("pause");
                 break;
-            //
-            // MODIFIED: Added handlers for next/previous actions from notification
-            //
             case ACTION_NEXT:
                 sendActionToWebView("nexttrack");
                 break;

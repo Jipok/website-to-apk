@@ -1,6 +1,5 @@
 package com.myexample.webtoapk;
 
-import android.content.DialogInterface;
 import android.net.http.SslError;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -270,7 +269,7 @@ public class MainActivity extends AppCompatActivity {
         webview.setWebViewClient(new CustomWebViewClient());
         chrome = new CustomWebChrome();
         webview.setWebChromeClient(chrome);
-        webAppInterface = new WebAppInterface(this);
+        WebAppInterface webAppInterface = new WebAppInterface(this);
         webview.addJavascriptInterface(webAppInterface, "WebToApk");
         registerBackCallback();
 
@@ -803,6 +802,8 @@ public class MainActivity extends AppCompatActivity {
                 .putString(DOWNLOADS_PREFS_KEY, ids.toString()).apply();
     }
 
+    /* Writes into the public Downloads directory: before API 29 that needs WRITE_EXTERNAL_STORAGE, so
+       the caller goes through the permission round-trip first and resumes here from the callback. */
     private void startDownload(String url, String userAgent, String contentDisposition, String mimetype) {
         DownloadManager downloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
 

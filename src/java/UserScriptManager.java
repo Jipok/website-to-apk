@@ -90,11 +90,9 @@ public class UserScriptManager {
                     if (line.contains("==UserScript==")) {
                         inMetadata = true;
                     }
-                    if (inMetadata) {
-                        code.append("//"+line+"\n");
-                    } else {
-                        code.append(line).append("\n");
-                    }
+                    // The metablock lines are already '//' comments, so re-prefixing them only
+                    // doubled the slashes and made the injected source differ from the file.
+                    code.append(line).append("\n");
                     if (line.contains("==/UserScript==")) {
                         inMetadata = false;
                     }                    
