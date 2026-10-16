@@ -318,30 +318,25 @@ build_artifact() {
     echo -e "${BOLD}----------------"
     echo -e "Final $label copied to: ${GREEN}${destination}${NC}"
     echo -e "Size: ${BLUE}$(du -h "$output" | cut -f1)${NC}"
-    echo -e "Package: ${BLUE}com.${appname}.webtoapk${NC}"
-    echo -e "App name: ${BLUE}$(grep -o 'app_name">[^<]*' app/src/main/res/values/strings.xml | cut -d'>' -f2)${NC}"
+    echo -e "Package: ${BLUE}com.${appid}.webtoapk${NC}"
+    echo -e "App name: ${BLUE}$(grep -o 'app_name">[^<]*' app/src/main/res/values/app_name.xml | cut -d'>' -f2)${NC}"
     echo -e "Version: ${BLUE}$appVersionName ($appVersionCode)${NC}"
-    echo -e "URL: ${BLUE}$(grep 'String mainURL' app/src/main/java/com/"$appname"/webtoapk/*.java | cut -d'"' -f2)${NC}"
+    echo -e "URL: ${BLUE}$(grep -h 'String mainURL =' "$SRC_JAVA"/*.java | head -1 | cut -d'"' -f2)${NC}"
     echo -e "${BOLD}----------------${NC}"
 }
 
 apk() { build_artifact apk; }
 aab() { build_artifact aab; }
 
-test() {
-    info "Detected app name: $appname"
+# Named test_apk because a function called `test` would shadow the shell builtin; ./make.sh test
+# maps to it at the bottom.
+test_apk() {
+    info "Detected application id: $appid"
     try "adb install app/build/outputs/apk/release/app-release.apk"
     try "adb logcat -c" # clean logs
-    try "adb shell am start -n com.$appname.webtoapk/.MainActivity"
+    try "adb shell am start -n com.$appid.webtoapk/$JAVA_PKG.MainActivity"
     echo "=========================="
     adb logcat | grep -oP "(?<=WebToApk: ).*"
-
-    # adb logcat *:I | grep com.$appname.webtoapk
-
-	# https://stackoverflow.com/questions/29072501/how-to-unlock-android-phone-through-adb
-	# adb shell input keyevent 26 #Pressing the lock button
-	# sleep 1s
-	# adb shell input touchscreen swipe 930 880 930 380 #Swipe UP
 }
 
 keygen() {
