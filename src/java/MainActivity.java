@@ -428,13 +428,29 @@ public class MainActivity extends AppCompatActivity {
         // documented to re-read getDownloads(), which only ever lists our own downloads.
         ContextCompat.registerReceiver(this, downloadCompleteReceiver,
             new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_EXPORTED);
+        downloadReceiverRegistered = true;
 
         // API 35+ forces every app edge-to-edge, so the listener is installed even for a config
         // that never asked for it: that config keeps its old look by padding the content out of
         // the bars itself. Below 35 the decor already consumed the insets, so they arrive as zero.
         ViewCompat.setOnApplyWindowInsetsListener(mainLayout, (v, windowInsets) -> {
-            // Get the insets for system bars in hardware pixels.
-            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            // Get the insets for system bars in hardware pixels. A display cutout is *not* part of
+            // `systemBars()`: in landscape it sits on the left or right edge, where the system bars
+            // contribute nothing — measured on a Pixel 9 Pro XL (API 36, punch hole) the insets stayed
+            // L:0.00 R:0.00 in landscape, so the page ran under the hole. The union is what the CSS
+            // vars and the padding below are computed from.
+            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            // The keyboard is not a bar either, and `adjustResize` no longer resizes the window from
+            // API 35 on (every window is edge-to-edge there, asked for or not). Where the insets are
+            // consumed the WebView never learns that the IME is up at all — measured on API 36: with
+            // the keyboard shown, `innerHeight` and `visualViewport.height` were both unchanged and the
+            // bottom inset was still the navigation bar's, so an input at the bottom of the page stayed
+            // behind the keyboard (screenshot). Padding the content by the IME is the `adjustResize` of
+            // an edge-to-edge window. It is applied *only* in the edgeToEdge branch: with the insets
+            // left unconsumed the WebView handles the keyboard itself — the same measurement with
+            // edgeToEdge = false had `visualViewport.height` fall 2013 -> 776 and the input visible —
+            // and padding there too would shrink the page twice.
+            Insets ime = windowInsets.getInsets(WindowInsetsCompat.Type.ime());
 
             // Get the device's screen density factor.
             float density = v.getResources().getDisplayMetrics().density;
@@ -453,15 +469,21 @@ public class MainActivity extends AppCompatActivity {
             // Pass insets to WebView via CSS custom properties.
             // These names are chosen to be close to the standard CSS env() variables.
             // The web content can then use var(--safe-area-inset-top).
+            // The first dispatch arrives while the document is still being parsed, and then there is
+            // no documentElement yet: the unguarded version threw "Cannot read properties of null
+            // (reading 'style')" in the page's console on every load.
             String js = String.format(java.util.Locale.US,
-                "document.documentElement.style.setProperty('--safe-area-inset-top', '%.2fpx');" +
-                "document.documentElement.style.setProperty('--safe-area-inset-bottom', '%.2fpx');" +
-                "document.documentElement.style.setProperty('--safe-area-inset-left', '%.2fpx');" +
-                "document.documentElement.style.setProperty('--safe-area-inset-right', '%.2fpx');" +
-                "document.dispatchEvent(new CustomEvent('WebToApkInsetsApplied'));",
+                "var root = document.documentElement; if (root) {" +
+                "root.style.setProperty('--safe-area-inset-top', '%.2fpx');" +
+                "root.style.setProperty('--safe-area-inset-bottom', '%.2fpx');" +
+                "root.style.setProperty('--safe-area-inset-left', '%.2fpx');" +
+                "root.style.setProperty('--safe-area-inset-right', '%.2fpx');" +
+                "document.dispatchEvent(new CustomEvent('WebToApkInsetsApplied')); }",
                 top, bottom, left, right
             );
-            webview.evaluateJavascript(js, null);
+            // The renderer may be gone (onRenderProcessGone nulls webview while the activity is
+            // finishing) and an insets dispatch can still arrive — the IME closing, say.
+            if (webview != null) webview.evaluateJavascript(js, null);
             insetsJs = js;   // onPageFinished replays it for every new document
 
             // The icons have to contrast with whatever shows through the bars. With edgeToEdge that
@@ -479,14 +501,18 @@ public class MainActivity extends AppCompatActivity {
                 controller.setAppearanceLightNavigationBars(!night);
             }
             if (edgeToEdge) {
+                // The keyboard would otherwise cover the bottom of the page: the page is drawn under
+                // the bars on purpose, but an input the user cannot see is not part of that bargain.
+                // Bottom only, and only the IME's own inset — the bars stay unpadded here.
+                v.setPadding(ime.left, 0, ime.right, ime.bottom);
                 return WindowInsetsCompat.CONSUMED;
             }
-            // Leave the insets unconsumed so the IME keeps resizing the window as before.
+            // Leave the insets unconsumed so the IME keeps resizing the window as before, and keep the
+            // content out of the bars (and out of the cutout).
             v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
             return windowInsets;
         });
 
-        // TODO check https://stackoverflow.com/questions/18479519/how-to-save-restore-webview-state
         boolean stateRestored = false;
         if (savedInstanceState != null) {
             // Restore the state of the WebView from the saved bundle.
