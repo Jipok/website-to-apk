@@ -268,6 +268,12 @@ public class MediaPlaybackService extends Service {
     }
 
     private void updatePlaybackState(String stateStr) {
+        if (stateStr == null) {
+            // The bridge forwards the page's argument untouched, so a call without one arrives as
+            // null here — and `switch` on a null String is an NPE in the service.
+            Log.w("WebToApk", "Ignoring null media playback state");
+            return;
+        }
         PlaybackState currentState = mediaSession.getController().getPlaybackState();
         if (currentState == null) {
             // Should not happen if initialized in onCreate, but good to be safe.
@@ -285,9 +291,15 @@ public class MediaPlaybackService extends Service {
             case "paused":
                 state = PlaybackState.STATE_PAUSED;
                 break;
-            default: // "none" or "stopped"
+            case "none":
+            case "stopped":
                 state = PlaybackState.STATE_STOPPED;
                 break;
+            default:
+                // Anything else used to be read as "stopped", which tore the notification down and
+                // stopped the service: a page typo ("Paused") killed playback. Unknown stays unknown.
+                Log.w("WebToApk", "Ignoring unknown media playback state: " + stateStr);
+                return;
         }
 
         PlaybackState.Builder newStateBuilder = new PlaybackState.Builder(currentState);

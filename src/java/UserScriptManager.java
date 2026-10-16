@@ -37,14 +37,29 @@ public class UserScriptManager {
             }
             
             for (String pattern : matches) {
-                String regex = pattern
-                    .replace(".", "\\.")
-                    .replace("*", ".*");
-                if (url.matches(regex)) {
+                if (url.matches(globToRegex(pattern))) {
                     return true;
                 }
             }
             return false;
+        }
+
+        /* `@match` is a glob, not a regex: only `*` is special. Everything else was handed to
+           `String.matches` as-is, so a `?` or `+` (or a stray `(`) in a pattern was read as a regex
+           quantifier — matching URLs the pattern never named, or throwing PatternSyntaxException out
+           of onPageStarted. The `.` that was escaped by hand before comes through here too. */
+        private static String globToRegex(String pattern) {
+            StringBuilder regex = new StringBuilder();
+            for (char c : pattern.toCharArray()) {
+                if (c == '*') {
+                    regex.append(".*");
+                } else if ("\\^$.|?+()[]{}".indexOf(c) >= 0) {
+                    regex.append('\\').append(c);
+                } else {
+                    regex.append(c);
+                }
+            }
+            return regex.toString();
         }
     }
 

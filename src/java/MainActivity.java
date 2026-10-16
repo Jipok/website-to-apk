@@ -1304,31 +1304,31 @@ public class MainActivity extends AppCompatActivity {
             }
 
             // Check if the URL is internal by comparing the host/domain
-            String urlDomain = request.getUrl().getHost();
-            String mainDomain = Uri.parse(mainURL).getHost();
-
-            // Safety check for malformed URLs
-            if (urlDomain == null || mainDomain == null) {
-                return handleExternalLink(url, view);
-            }
-
-            // Check if domains match (including subdomains if enabled)
-            boolean isInternalLink;
-            if (allowSubdomains) {
-                // Allow:
-                //   youtube.com -> m.youtube.com
-                //   m.youtube.com -> youtube.com
-                isInternalLink = sameSite(urlDomain, mainDomain);
-            } else {
-                isInternalLink = urlDomain.equals(mainDomain);
-            }
-
-            if (isInternalLink) {
+            if (isInternalUrl(url)) {
                 // Internal link: let the WebView load it normally
                 return false;
             }
 
             return handleExternalLink(url, view);
+        }
+
+        /* Is this URL one of ours? http(s) only — a `javascript:` URL handed to loadUrl runs in this
+           WebView, and this WebView carries the bridge (`file://` counts the same way, which is why
+           urlFromIntent refuses it too). The host has to be the page's own; `allowSubdomains` keeps
+           youtube.com -> m.youtube.com working. Main-frame navigation and the `intent://` fallback
+           both go through here, so a page cannot name a URL it is not allowed to navigate to. */
+        private boolean isInternalUrl(String url) {
+            Uri parsed = Uri.parse(url);
+            String scheme = parsed.getScheme();
+            if (!"http".equals(scheme) && !"https".equals(scheme)) {
+                return false;
+            }
+            String urlDomain = parsed.getHost();
+            String mainDomain = Uri.parse(mainURL).getHost();
+            if (urlDomain == null || mainDomain == null) {
+                return false;   // malformed URL
+            }
+            return allowSubdomains ? sameSite(urlDomain, mainDomain) : urlDomain.equals(mainDomain);
         }
 
         /* One place for "hand this URL to another app". An `intent://` URL is how an Android site
@@ -1353,9 +1353,17 @@ public class MainActivity extends AppCompatActivity {
                 view.getContext().startActivity(intent);
             } catch (ActivityNotFoundException e) {
                 Log.e("WebToApk", "\033[0;31mNo application can handle this URL:\033[0m " + url, e);
-                // intent://…;S.browser_fallback_url=<url>;end — where the site wants us to go instead
+                // intent://…;S.browser_fallback_url=<url>;end — where the site wants us to go instead.
+                // The page wrote that string, so it may be anything: `javascript:` would run in this
+                // WebView and a foreign host would inherit the bridge. The same gate main-frame
+                // navigation goes through decides, and what fails it is dropped, not loaded.
                 String fallback = intent.getStringExtra("browser_fallback_url");
-                if (fallback != null && !fallback.isEmpty()) view.loadUrl(fallback);
+                if (fallback == null || fallback.isEmpty()) return;
+                if (isInternalUrl(fallback)) {
+                    view.loadUrl(fallback);
+                } else {
+                    Log.w("WebToApk", "Ignoring browser_fallback_url: " + fallback);
+                }
             }
         }
 
@@ -1714,10 +1722,11 @@ public class MainActivity extends AppCompatActivity {
         public String getDownloads() {
             JSONArray downloads = new JSONArray();
             // The filter belongs in the query: on API < 29 an unfiltered one returns every download
-            // on the device, and setFilterById is exact as well as faster than the scan
-            long[] ids = new long[ownDownloads.size()];
-            int next = 0;
-            for (long id : ownDownloads) ids[next++] = id;
+            // on the device, and setFilterById is exact as well as faster than the scan.
+            // One atomic snapshot: ownDownloads is a concurrent set that the completion receiver
+            // (main thread) and this bridge method (JavaBridge thread) both add to, so a size read
+            // followed by iteration could fill an array that had grown in between.
+            long[] ids = ownDownloads.stream().mapToLong(Long::longValue).toArray();
             if (ids.length == 0) return downloads.toString();
             DownloadManager manager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
             try (Cursor cursor = manager.query(new DownloadManager.Query().setFilterById(ids))) {
