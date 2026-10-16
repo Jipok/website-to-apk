@@ -337,7 +337,7 @@ build_artifact() {
     esac
 
     local output="app/build/outputs/$dir/release/app-release.$ext"
-    local destination="$appname.$ext"
+    local destination="$appid.$ext"
     local label="${ext^^}"
 
     rm -f "$output"
