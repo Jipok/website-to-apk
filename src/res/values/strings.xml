@@ -1,5 +1,4 @@
 <resources>
-    <string name="app_name">My App Name</string>
     <string name="error_message">Check internet connection</string>
     <string name="exit_app">Tap back again to exit</string>
     <string name="try_again">Try again</string>

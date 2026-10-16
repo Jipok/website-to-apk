@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">My App Name</string>
     <string name="error_message">Vérifiez la connexion Internet</string>
     <string name="exit_app">Appuyez à nouveau pour quitter</string>
     <string name="try_again">Réessayer</string>

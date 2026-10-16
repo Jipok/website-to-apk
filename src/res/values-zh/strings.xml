@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">My App Name</string>
     <string name="error_message">请检查网络连接</string>
     <string name="exit_app">再次点击退出</string>
     <string name="try_again">重试</string>

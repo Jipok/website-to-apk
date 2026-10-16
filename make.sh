@@ -364,56 +364,67 @@ chid() {
         error "Invalid application ID. Use only letters, numbers and underscores, start with a letter"
     fi
 
-    if [ "$1" != "$appname" ]; then
-        info "Old name: com.$appname.webtoapk"
-        info "Renaming to: com.$1.webtoapk"
-
-        appname="$1"
-        write_config_gradle
-
-        log "Application ID changed successfully"
-    fi
-
-    # The template is unpacked into the package directory of the (possibly new) id
-    sync_sources
+    appid="$1"
+    log "Application ID: com.$1.webtoapk"
 }
 
 
-# XML text escaping, for values that end up inside strings.xml
+# XML text escaping, for values that end up as text inside a resource
 xml_escape() {
     sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
 
+# aapt's own string-resource escapes, applied *after* xml_escape (never before: an `&` that has become
+# `&amp;` must not be touched again). A lone backslash is eaten by aapt — `Back\slash` shipped as
+# `Backslash` — an unescaped apostrophe is a hard aapt2 error (`Bob's App`), and a leading `@`/`?` is
+# escaped defensively: aapt2 36 keeps `@Home` as text (measured), but the escape costs nothing and is
+# what the docs ask for. No sed metacharacter can reach the output any more: the name is written as
+# data, not through an `s|…|…|` replacement, so a `|` in it is just a character.
+resource_escape() {
+    sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g" -e 's/"/\\"/g'
+}
+
+# name = ... — the display name gets its own generated resource file instead of being sed-edited into
+# the six strings.xml files: one value, one escaping pass, and the same name in every locale, which is
+# what the old per-locale loop wrote anyway. sync_sources() unpacks a fresh res/ before this runs, so
+# no stale app_name.xml can win. The old sed also failed *loudly* on `|` (unknown option to 's') and
+# left the tree with the default name on half the files — three separate ways to lose the name.
 rename() {
     local new_name="$*"
+    local xml_file="app/src/main/res/values/app_name.xml"
+    local escaped_name current_name tmp_file
 
     if [ -z "$new_name" ]; then
         error "Please provide a display name\nUsage: $0 display_name \"My App Name\""
     fi
 
-    # Найти все файлы strings.xml в различных языковых директориях
-    find app/src/main/res/values* -name "strings.xml" | while read xml_file; do
-        current_name=$(grep -o 'app_name">[^<]*' "$xml_file" | cut -d'>' -f2)
-        if [ "$current_name" = "$new_name" ]; then
-            continue
-        fi
+    escaped_name=$(printf '%s' "$new_name" | xml_escape | resource_escape)
+    case "$escaped_name" in
+        # bash, not sed: `\@` through a sed replacement is not portable — GNU sed drops the backslash
+        @*|\?*) escaped_name="\\$escaped_name" ;;
+    esac
 
-        # The name lands in XML text, so escape it for XML first and for the sed replacement second
-        escaped_name=$(printf '%s' "$new_name" | xml_escape | sed 's/[\/&]/\\&/g')
-        try sed -i "s|<string name=\"app_name\">[^<]*</string>|<string name=\"app_name\">$escaped_name</string>|" "$xml_file"
+    # Not idempotency (the file is regenerated every run) but DX: without this the log claims a change
+    # that did not happen on every build that leaves the name at its default
+    current_name=$(grep -o 'app_name">[^<]*' "$xml_file" 2>/dev/null | cut -d'>' -f2)
+    if [ "$current_name" = "$escaped_name" ]; then
+        return 0
+    fi
 
-        # Получаем код языка из пути файла
-        lang_code=$(echo "$xml_file" | grep -o 'values-[^/]*' | cut -d'-' -f2)
-        if [ -z "$lang_code" ]; then
-            lang_code="default"
-        fi
-
-        log "Display name changed to: $new_name (${lang_code})"
-    done
+    tmp_file=$(mktemp)
+    cat > "$tmp_file" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">$escaped_name</string>
+</resources>
+EOF
+    try mv "$tmp_file" "$xml_file"
+    log "Display name changed to: $new_name"
 }
 
 
-# Set versionCode / versionName in the generated app/config.gradle
+# Set versionCode / versionName for the generated config.gradle. It is written once, at the end of
+# apply_config: a partial write here used to survive a later error in the loop (D39).
 set_version() {
     local key="$1" value="$2"
 
