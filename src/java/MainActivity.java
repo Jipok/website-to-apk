@@ -855,6 +855,12 @@ public class MainActivity extends AppCompatActivity {
         return allowed;
     }
 
+    // FINE or COARSE is enough — see the geolocation prompt in CustomWebChrome
+    private boolean locationGranted() {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                || ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -907,7 +913,9 @@ public class MainActivity extends AppCompatActivity {
         // Handle Location (Re-using the ID or creating a new one)
         else if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
             if (geoCallback != null) {
-                if (isGranted) {
+                // Not `isGranted`: that means "all of them", and the approximate answer grants COARSE
+                // only. Read the OS state, the way the camera/mic branch does.
+                if (locationGranted()) {
                     // Tell WebView that permission is granted
                     geoCallback.invoke(geoOrigin, true, false);
                 } else {
@@ -1001,11 +1009,16 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // Either permission is a yes: Android 12+ asks "precise or approximate" and grants
+            // ACCESS_COARSE_LOCATION alone when the user picks approximate, so declaring and
+            // requesting FINE by itself ends in a deny for a page that did nothing wrong (R43).
+            if (!locationGranted()) {
                 // Permission missing. Save callback and ask User.
                 geoCallback = callback;
                 geoOrigin = origin;
-                ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_PERMISSION_REQUEST_CODE);
+                ActivityCompat.requestPermissions(MainActivity.this,
+                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION},
+                        LOCATION_PERMISSION_REQUEST_CODE);
             } else {
                 // Permission already granted by OS. Proceed.
                 callback.invoke(origin, true, false);
