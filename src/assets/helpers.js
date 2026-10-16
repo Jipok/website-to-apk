@@ -454,21 +454,40 @@ if (!window.Notification) {
         if (a) window.__webtoapkDownloadName = a.download;
     }, true);
 
+    // A site exports like this: build a Blob, point a link at it, click the link, revoke the URL.
+    // The element is usually not in the DOM (so no click ever reaches the listener above), and by the
+    // time the SAF picker comes back the URL is long revoked — fetching then reported "download
+    // failed" for an export the site had done correctly. Keep the Blob itself, not just the name: it
+    // is the page's own object, so a reference leaks nothing new, and the last few are plenty.
+    const RECENT_BLOBS = 8;
+    const recentBlobs = new Map();
+    const createObjectURL = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = function (blob) {
+        const url = createObjectURL(blob);
+        recentBlobs.set(url, blob);
+        if (recentBlobs.size > RECENT_BLOBS) recentBlobs.delete(recentBlobs.keys().next().value);
+        return url;
+    };
+
     // blob:/data: links cannot go through DownloadManager. The app asks the user for a
     // destination (SAF), then we stream the bytes to it in chunks to keep memory flat.
     window.__webtoapkSaveBlob = (url, mime) => {
-        WebToApk.pickSaveTarget(window.__webtoapkDownloadName || 'download', mime);
+        const name = window.__webtoapkDownloadName || 'download';
+        window.__webtoapkDownloadName = null;   // it used to stick to every later download
+        WebToApk.pickSaveTarget(name, mime);
+        const kept = recentBlobs.get(url);
+        recentBlobs.delete(url);
         window.__webtoapkSendBlob = async () => {
             let ok = true;
             try {
-                const blob = await (await fetch(url)).blob();
+                const blob = kept || await (await fetch(url)).blob();
                 for (let offset = 0; offset < blob.size; offset += CHUNK) {
                     const reader = new FileReader();
                     await new Promise((resolve) => {
                         reader.onload = resolve;
                         reader.readAsDataURL(blob.slice(offset, offset + CHUNK));
                     });
-                    WebToApk.appendChunk(reader.result.split(',')[1]);
+                    if (!WebToApk.appendChunk(reader.result.split(',')[1])) ok = false;
                 }
             } catch (e) {
                 ok = false;

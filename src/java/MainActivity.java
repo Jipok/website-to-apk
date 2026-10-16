@@ -368,7 +368,15 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     closeSaveStream();   // a second save must not leak the first stream
                     saveStream = getContentResolver().openOutputStream(result.getData().getData());
-                    if (webview != null) webview.evaluateJavascript("__webtoapkSendBlob()", null);
+                    saveFailed = false;
+                    if (webview == null) {   // renderer gone: nothing will send the blob
+                        // The stream would sit open until the next save or onDestroy: fail the save
+                        // now instead of leaking it.
+                        closeSaveStream();
+                        Toast.makeText(this, R.string.download_failed, Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    webview.evaluateJavascript("__webtoapkSendBlob()", null);
                 } catch (Exception e) {
                     Log.e("WebToApk", "Cannot open save target", e);
                     Toast.makeText(this, R.string.download_failed, Toast.LENGTH_LONG).show();
@@ -756,14 +764,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // The blob export writes into a document the user picked: close whatever a previous save left
-    // open before taking a new one, so a second save cannot leak the first stream.
+    // open before taking a new one, so a second save cannot leak the first stream. The reference is
+    // taken and cleared *before* closing: the SAF callback (main thread) and the bridge's finishSave
+    // (JavaBridge thread) both call this, and reading the field twice would let one thread null it
+    // between the check and the call. It catches everything for the same reason it exists — a save
+    // must not fail on the way out.
     private void closeSaveStream() {
+        OutputStream stream = saveStream;
+        saveStream = null;
         try {
-            if (saveStream != null) saveStream.close();
-        } catch (IOException e) {
+            if (stream != null) stream.close();
+        } catch (Exception e) {
             Log.e("WebToApk", "Cannot close the save stream", e);
         }
-        saveStream = null;
     }
 
     private void saveOwnDownloads() {
@@ -1656,22 +1669,32 @@ public class MainActivity extends AppCompatActivity {
             ));
         }
 
+        // Returns false when the bytes did not reach the destination. The write is the only place
+        // that knows — the page's `fetch` succeeded and its blob is complete — so swallowing that
+        // here made a full disk or a revoked document look like a successful save.
         @JavascriptInterface
-        public void appendChunk(String base64) {
+        public boolean appendChunk(String base64) {
+            OutputStream stream = saveStream;   // read once: finishSave may clear it meanwhile
+            if (stream == null) {
+                saveFailed = true;
+                return false;
+            }
             try {
-                saveStream.write(Base64.decode(base64, Base64.DEFAULT));
+                stream.write(Base64.decode(base64, Base64.DEFAULT));
+                return true;
             } catch (Exception e) {
+                saveFailed = true;
                 Log.e("WebToApk", "Chunk write failed", e);
+                return false;
             }
         }
 
         @JavascriptInterface
         public void finishSave(boolean ok) {
-            try {
-                closeSaveStream();
-            } catch (Exception ignored) {}
-            saveStream = null;
-            if (!ok) {
+            boolean failed = !ok || saveFailed;   // a page that ignored the answers above is told too
+            saveFailed = false;
+            closeSaveStream();
+            if (failed) {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this, R.string.download_failed, Toast.LENGTH_LONG).show());
             }
         }
