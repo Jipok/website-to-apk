@@ -64,62 +64,67 @@ set_var() {
     local var_name="${pattern%% =*}"
     local new_value="${pattern#*= }"
 
-    # Check if variable exists
-    if ! grep -q "$var_name *= *.*;" "$java_file"; then
-        error "Variable '$var_name' not found in MainActivity.java"
-    fi
+    # No quote handling here: `apply_config` already stripped a *pair* of surrounding quotes on the
+    # way in. Stripping per edge a second time ate a real trailing quote — `userAgent = "Say "hi""`
+    # shipped the literal `Say "hi` (tests/run.sh check_value_quotes).
 
-    # Remove surrounding quotes (double or single) if provided in the config
-    new_value="${new_value%\"}"
-    new_value="${new_value#\"}"
-    new_value="${new_value%\'}"
-    new_value="${new_value#\'}"
-
-    # Add quotes if value is not boolean AND not a number/integer
+    # `true`/`false`/an integer go in bare; everything else becomes a Java string literal, so a
+    # backslash or a double quote in the config has to survive the Java compiler
+    local java_value="$new_value"
     if [[ ! "$new_value" =~ ^(true|false)$ ]] && [[ ! "$new_value" =~ ^[0-9]+$ ]]; then
-        new_value="\"$new_value\""
+        java_value="${new_value//\\/\\\\}"
+        java_value="${java_value//\"/\\\"}"
+        java_value="\"$java_value\""
     fi
 
-    local tmp_file=$(mktemp)
+    local tmp_file
+    tmp_file=$(mktemp)
 
-    awk -v var="$var_name" -v val="$new_value" '
-    {
-        if (!found && $0 ~ var " *= *.*;" ) {
-            # Save start of line up to =
-            match($0, "^.*" var " *=")
-            before = substr($0, RSTART, RLENGTH)
-            # Replace value
-            print before " " val ";"
-            # Only replace the first occurrence
+    # Only the marked config block counts: `mainURL` also appears as `mainURL = url;` in
+    # onNewIntent and `cookies` as a method local, so an unanchored search depends on declaration
+    # order. The value travels in the environment, not via `awk -v`, which runs escape processing
+    # and turned `Mozilla\5.0` into `Mozilla.0`.
+    if ! SETVAR_FIELD="^[[:space:]]*[^[:space:]]+[[:space:]]+$var_name[[:space:]]*=" SETVAR_VALUE="$java_value" awk '
+        /\/\/ <webtoapk:config>/   { in_config = 1 }
+        /\/\/ <\/webtoapk:config>/ { in_config = 0 }
+        in_config && !found && $0 ~ ENVIRON["SETVAR_FIELD"] {
+            match($0, ENVIRON["SETVAR_FIELD"])
+            print substr($0, 1, RLENGTH) " " ENVIRON["SETVAR_VALUE"] ";"
             found = 1
-        } else {
-            print $0
+            next
         }
-    }' "$java_file" > "$tmp_file"
-
-    if ! diff -q "$java_file" "$tmp_file" >/dev/null; then
-        mv "$tmp_file" "$java_file"
-        log "Updated $var_name to $new_value"
-
-        # Clean value from quotes for logic checks
-        local val_clean="${new_value//\"/}"
-
-        # Handle permissions based on specific variable names
-        case "$var_name" in
-            "geolocationEnabled")
-                update_permission "android.permission.ACCESS_FINE_LOCATION" "$val_clean"
-                ;;
-            "cameraEnabled")
-                update_permission "android.permission.CAMERA" "$val_clean"
-                ;;
-            "microphoneEnabled")
-                update_permission "android.permission.RECORD_AUDIO" "$val_clean"
-                update_permission "android.permission.MODIFY_AUDIO_SETTINGS" "$val_clean"
-                ;;
-        esac
-    else
-        rm "$tmp_file"
+        { print }
+        END { if (!found) exit 1 }
+    ' "$java_file" > "$tmp_file"; then
+        rm -f "$tmp_file"
+        error "Variable '$var_name' not found in the config block of MainActivity.java"
     fi
+
+    # Nothing changed when the merged config matches the template's default
+    if diff -q "$java_file" "$tmp_file" >/dev/null; then
+        rm "$tmp_file"
+        return 0
+    fi
+
+    mv "$tmp_file" "$java_file"
+    log "Updated $var_name to $java_value"
+
+    # Handle permissions based on specific variable names
+    case "$var_name" in
+        "geolocationEnabled")
+            # Android 12+ offers "precise or approximate" and grants ACCESS_COARSE_LOCATION alone
+            # when the user picks approximate, so both have to be declared and FINE is not required
+            update_permission "android.permission.ACCESS_FINE_LOCATION" "$new_value"
+            update_permission "android.permission.ACCESS_COARSE_LOCATION" "$new_value"
+            ;;
+        "cameraEnabled")
+            update_permission "android.permission.CAMERA" "$new_value"
+            ;;
+        "microphoneEnabled")
+            update_permission "android.permission.RECORD_AUDIO" "$new_value"
+            update_permission "android.permission.MODIFY_AUDIO_SETTINGS" "$new_value"
+            ;;
+    esac
 }
 
 
@@ -293,13 +298,13 @@ apply_config() {
                 set_network_security_config "$value"
                 ;;
             "ca")
-                set_ca $value
+                set_ca "$value"
                 ;;
             "icon")
                 set_icon "$value"
                 ;;
             "scripts")
-                set_userscripts $value
+                set_userscripts "$value"
                 ;;
             "site")
                 set_site "$value"
@@ -308,7 +313,10 @@ apply_config() {
                 set_var "$key = $value"
                 ;;
         esac
-    done < <(sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]]\+#.*//' "$config_file")
+    done < <(sed -e '/^[[:space:]]*#/d' "$config_file")
+
+    # One writer, after the whole config has been read
+    write_config_gradle
 
     # The merged config is a temp file (defaults + the user's, so it can hold basicAuth and cookies)
     rm -f "$config_file"
@@ -459,16 +467,12 @@ set_version() {
         "versionCode")
             [[ "$value" =~ ^[0-9]+$ ]] || error "versionCode must be an integer, got: '$value'"
             appVersionCode="$value"
-            write_config_gradle
-            log "Updated versionCode to $value"
+            log "versionCode: $value"
             ;;
         "versionName")
-            # Remove surrounding quotes (double or single) if provided in the config
-            value="${value%\"}"; value="${value#\"}"
-            value="${value%\'}"; value="${value#\'}"
+            # The pair is stripped on the way in, by `apply_config` (set_var says why not here)
             appVersionName="$value"
-            write_config_gradle
-            log "Updated versionName to '$value'"
+            log "versionName: $value"
             ;;
         *)
             error "Unknown version field: $key"
@@ -532,25 +536,28 @@ set_network_security_config() {
     local nsc_file="app/src/main/res/xml/network_security_config.xml"
     local enabled="$1"
     local tmp_file
+
+    # false is the default and is exactly what the template ships: system CAs only
+    [ "$enabled" = "true" ] || return 0
+
     tmp_file=$(mktemp)
-
-    if [ "$enabled" = "true" ]; then
-        if grep -qE '^[[:space:]]*<certificates src="user"' "$nsc_file"; then
-            rm -f "$tmp_file"
-            return 0
-        fi
-        sed 's#^\([[:space:]]*\)<certificates src="system" />#\1<certificates src="system" />\n\1<certificates src="user" />#' "$nsc_file" > "$tmp_file"
-        log "Trusting user-installed CAs"
-    else
-        if ! grep -qE '^[[:space:]]*<certificates src="user"' "$nsc_file"; then
-            rm -f "$tmp_file"
-            return 0
-        fi
-        grep -vE '^[[:space:]]*<certificates src="user"' "$nsc_file" > "$tmp_file"
-        log "Not trusting user-installed CAs"
-    fi
-
+    sed 's#^\([[:space:]]*\)<certificates src="system" />#\1<certificates src="system" />\n\1<certificates src="user" />#' "$nsc_file" > "$tmp_file"
+    log "Trusting user-installed CAs"
     try mv "$tmp_file" "$nsc_file"
+}
+
+
+# Turn a config value into a list of paths, one per line. Entries are space-separated, a relative
+# path is resolved against the config file's directory, and globs expand there too: the shell would
+# otherwise expand them at the call site, against the project root, before CONFIG_DIR is known.
+# A pattern that matches nothing is passed through as-is, so the caller can report it.
+config_files() {
+    local patterns pattern f
+    read -ra patterns <<< "$1"
+    for pattern in "${patterns[@]}"; do
+        [ -n "${CONFIG_DIR:-}" ] && [[ "$pattern" != /* ]] && pattern="$CONFIG_DIR/$pattern"
+        for f in $pattern; do printf '%s\n' "$f"; done
+    done
 }
 
 
@@ -617,12 +624,10 @@ set_icon() {
         error "Icon must be in PNG format, got: $file_type"
     fi
 
-    # Check if icon needs to be updated
-    if [ -f "$dest_file" ] && cmp -s "$icon_path" "$dest_file"; then
-        return 0
-    fi
+    # Not idempotency (res/ is unpacked fresh every run) but DX: skip the copy and the log when the
+    # config's icon is already the one the template ships
+    cmp -s "$icon_path" "$dest_file" && return 0
 
-    # Copy icon
     try "cp \"$icon_path\" \"$dest_file\""
     log "Icon updated successfully"
 }
