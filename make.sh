@@ -676,37 +676,27 @@ update_permission() {
 
     # Construct the full permission tag
     local permission_tag="<uses-permission android:name=\"$permission_name\" />"
-    local tmp_file=$(mktemp)
 
-    if [ "$enabled" = "true" ]; then
-        # Add permission if not already present
-        if ! grep -q "$permission_name" "$manifest_file"; then
-            awk -v tag="$permission_tag" '
-            {
-                print $0
-                # Insert permission right after the opening manifest tag
-                if ($0 ~ /<manifest /) {
-                    print "    " tag
-                }
-            }' "$manifest_file" > "$tmp_file"
+    # false is the default: the freshly unpacked manifest simply does not declare it
+    [ "$enabled" = "true" ] || return 0
 
-            log "Added permission: $permission_name"
-            try mv "$tmp_file" "$manifest_file"
-        else
-            rm "$tmp_file"
-        fi
-    else
-        # Remove permission if present
-        if grep -q "$permission_name" "$manifest_file"; then
-            # Filter out lines containing the permission name
-            grep -v "$permission_name" "$manifest_file" > "$tmp_file"
+    # Nothing to do if the permission is already declared
+    grep -q "$permission_name" "$manifest_file" && return 0
 
-            log "Removed permission: $permission_name"
-            try mv "$tmp_file" "$manifest_file"
-        else
-            rm "$tmp_file"
-        fi
-    fi
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    awk -v tag="$permission_tag" '
+    {
+        print $0
+        # Insert permission right after the opening manifest tag
+        if ($0 ~ /<manifest /) {
+            print "    " tag
+        }
+    }' "$manifest_file" > "$tmp_file"
+
+    log "Added permission: $permission_name"
+    try mv "$tmp_file" "$manifest_file"
 }
 
 
