@@ -2,13 +2,16 @@ package com.myexample.webtoapk;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
@@ -81,17 +84,17 @@ public class MediaPlaybackService extends Service {
         }
     }
 
-    /* One place for both channels. The service creates them itself because it is START_STICKY: it
-       can come back after the process died, without the activity ever running, and a notification
-       posted to a channel that does not exist is dropped (R9). */
+    /* Both channels, in one place. The activity creates them before anything can post — it is the
+       only starter of this service, which is no longer sticky — and posting to a channel that does
+       not exist is silently dropped, which is what used to justify a second caller here (D42). */
     public static void createNotificationChannels(Context context) {
         NotificationManagerCompat manager = NotificationManagerCompat.from(context);
         NotificationChannel web = new NotificationChannel(NOTIFICATION_CHANNEL_ID,
-                "Web App Notifications", NotificationManagerCompat.IMPORTANCE_DEFAULT);
+                "Web App Notifications", NotificationManager.IMPORTANCE_DEFAULT);
         web.setDescription("Channel for web app notifications");
         manager.createNotificationChannel(web);
         NotificationChannel media = new NotificationChannel(MEDIA_CHANNEL_ID,
-                "Media playback", NotificationManagerCompat.IMPORTANCE_LOW);
+                "Media playback", NotificationManager.IMPORTANCE_LOW);
         media.setDescription("Playback controls for audio and video");
         manager.createNotificationChannel(media);
     }
@@ -100,11 +103,14 @@ public class MediaPlaybackService extends Service {
     public void onCreate() {
         super.onCreate();
 
+        // Idempotent, and needed here as well as in MainActivity: a media-button PendingIntent can
+        // start this service in a fresh process, where the activity never ran and the channel a
+        // notification needs would not exist yet.
         createNotificationChannels(this);
 
         mediaSession = new MediaSession(this, "WebToApkMediaSession");
-        mediaSession.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS |
-                              MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        // No setFlags(): FLAG_HANDLES_MEDIA_BUTTONS/TRANSPORT_CONTROLS are deprecated with "no longer
+        // used" at API 26 and read by nothing since (D27), so setting them is dead weight.
 
         // Set initial state. It must be something other than STATE_NONE.
         PlaybackState initialState = new PlaybackState.Builder()
@@ -152,8 +158,9 @@ public class MediaPlaybackService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // A null intent means the system restarted us; START_NOT_STICKY below is what stops that
         if (intent == null || intent.getAction() == null) {
-            return START_STICKY;
+            return START_NOT_STICKY;
         }
 
         String action = intent.getAction();
@@ -201,7 +208,7 @@ public class MediaPlaybackService extends Service {
                 break;
         }
 
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     private void updateMetadata(String title, String artist, String album, @Nullable String artworkUrl) {
@@ -311,7 +318,15 @@ public class MediaPlaybackService extends Service {
             // Android 12+ refuses a foreground start from the background
             // (ForegroundServiceStartNotAllowedException): log it rather than kill the process
             try {
-                startForeground(NOTIFICATION_ID, buildNotification());
+                Notification notification = buildNotification();
+                if (notification == null) {
+                    // startForeground(id, null) throws, and buildNotification() returns null whenever
+                    // the session has no playing/paused state to show. Unreachable today; a guard
+                    // because the next refactor will not remember that.
+                    Log.w("WebToApk", "No notification to post for state " + state);
+                    return;
+                }
+                startForeground(NOTIFICATION_ID, notification);
             } catch (Exception e) {
                 Log.e("WebToApk", "Cannot bring the media service to the foreground", e);
             }
@@ -362,9 +377,6 @@ public class MediaPlaybackService extends Service {
     }
 
 
-    //
-    // MODIFIED: Fully rewrote the buildNotification method.
-    //
     private Notification buildNotification() {
         MediaMetadata metadata = mediaSession.getController().getMetadata();
         PlaybackState playbackState = mediaSession.getController().getPlaybackState();
