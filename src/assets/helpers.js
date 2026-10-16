@@ -298,11 +298,15 @@ if (!window.Notification) {
  * Android's system UI (e.g., notification shade, lock screen).
  */
 (function() {
-    if (!('mediaSession' in navigator) || navigator.mediaSession._isShim) {
-        if (navigator.mediaSession && navigator.mediaSession._isShim) {
-             console.log("WebToApk: Media Session shim already initialized.");
-             return;
-        }
+    if (navigator.mediaSession) {
+        // Injected twice into one document: keep the instance the page already holds, or the
+        // handlers it registered would be thrown away.
+        if (navigator.mediaSession._isShim) return;
+        // A real Media Session API. This shim carries four actions; the platform one has seekto,
+        // stop, seekbackward/forward and the rest, so replacing it would be a downgrade — and a
+        // future WebView having one is the whole reason this check exists. WebView has none today.
+        console.log("WebToApk: native Media Session API present, keeping it.");
+        return;
     }
 
     window.MediaMetadata = class MediaMetadata {
@@ -317,6 +321,10 @@ if (!window.Notification) {
     const _handlers = {};
     let _metadata = null;
     let _playbackState = "none";
+    // Artwork is fetched asynchronously, so the answer for track A can arrive after the one for track
+    // B and put A's cover back on the notification. Every update takes a ticket; only the newest one
+    // is allowed to reach the native side.
+    let _metadataSeq = 0;
     const SUPPORTED_ACTIONS = ['play', 'pause', 'previoustrack', 'nexttrack'];
 
     const mediaSessionShim = {
@@ -329,6 +337,7 @@ if (!window.Notification) {
 
         set metadata(metadata) {
             _metadata = metadata;
+            const seq = ++_metadataSeq;
             if (!metadata) {
                 // Clear all metadata
                 window.WebToApk.updateMediaMetadata(null, null, null, null);
@@ -360,6 +369,7 @@ if (!window.Notification) {
                     })
                     .then(convertToDataURL)
                     .then(dataUrl => {
+                        if (seq !== _metadataSeq) return;   // a newer track already won
                         window.WebToApk.updateMediaMetadata(title, artist, album, dataUrl);
                     })
                     .catch(cacheError => {
@@ -373,11 +383,13 @@ if (!window.Notification) {
                             })
                             .then(convertToDataURL)
                             .then(dataUrl => {
+                                if (seq !== _metadataSeq) return;   // a newer track already won
                                 window.WebToApk.updateMediaMetadata(title, artist, album, dataUrl);
                             })
                             .catch(networkError => {
                                 // Final fallback: If both cache and network fail, send no artwork
                                 console.error('WebToApk: Both cache and network fetch for artwork failed. Sending null.', networkError.message);
+                                if (seq !== _metadataSeq) return;   // a newer track already won
                                 window.WebToApk.updateMediaMetadata(title, artist, album, null);
                             });
                     });
