@@ -132,15 +132,30 @@ migrate_keystore() {
 }
 
 
-# Remembers what the tree was generated for, so that `./make.sh apk` works without a config
+# Remembers what the tree was generated for, so that `./make.sh apk` works without a config: the
+# `appid` (short form of the application id, com.<appid>.webtoapk — used for the artifact name, the
+# adb launch and config.gradle; nothing to do with the Java package, $JAVA_PKG) and the version, which
+# the banner prints even when `apply_config` ran in another process. Reading the version back does not
+# reopen D39: `apply_config` resets both fields *before* it reads the first config key, so nothing can
+# be inherited from the previous generation. The name is stored escaped (write_config_gradle), so `\`
+# and `'` have to come back out here — `7.7'beta` must not print as `7.7\'beta`.
 read_generated_config() {
     local file="config.gradle"
-    appname=$(sed -n 's/^ext\.appId *= *//p' "$file" 2>/dev/null | tr -d "'\"" | cut -d. -f2 | head -n1)
-    appVersionCode=$(sed -n 's/^ext\.appVersionCode *= *//p' "$file" 2>/dev/null | tr -dc '0-9')
-    appVersionName=$(sed -n 's/^ext\.appVersionName *= *//p' "$file" 2>/dev/null | tr -d "'\"")
-    appname="${appname:-myexample}"
+    appid=$(sed -n 's/^ext\.appId *= *//p' "$file" 2>/dev/null | tr -d "'\"" | cut -d. -f2 | head -n1)
+    appid="${appid:-myexample}"
+    # A missing key falls back to what apply_config starts from; an empty *value* is kept (hence no
+    # `if`, the way the name gets one for a different reason: `''` is a value, silence is not)
+    appVersionCode=$(sed -n 's/^ext\.appVersionCode *= *//p' "$file" 2>/dev/null | head -n1)
     appVersionCode="${appVersionCode:-1}"
-    appVersionName="${appVersionName:-1.0}"
+    appVersionName=$(sed -n 's/^ext\.appVersionName *= *//p' "$file" 2>/dev/null | head -n1)
+    if [ -z "$appVersionName" ]; then
+        appVersionName="1.0"
+    else
+        appVersionName="${appVersionName#\'}"
+        appVersionName="${appVersionName%\'}"
+        appVersionName="${appVersionName//\\\\/\\}"
+        appVersionName="${appVersionName//\\\'/\'}"
+    fi
 }
 
 
@@ -148,9 +163,15 @@ read_generated_config() {
 # file, so the tracked build.gradle stays the same for every app.
 write_config_gradle() {
     local file="config.gradle"
-    local content="ext.appId = 'com.$appname.webtoapk'
+    # Groovy single-quoted strings process backslash escapes. A lone `'` ends the literal (Gradle:
+    # `Unexpected character` and the build dies); a lone `\` eats the next character — `a\b` became
+    # `a` + backspace, measured, and nothing said so. appId needs none of this: it is validated to
+    # [a-zA-Z0-9_]. Escape `\` first, or the added backslashes get escaped in turn.
+    local version_name="${appVersionName//\\/\\\\}"
+    version_name="${version_name//\'/\\\'}"
+    local content="ext.appId = 'com.$appid.webtoapk'
 ext.appVersionCode = $appVersionCode
-ext.appVersionName = '$appVersionName'"
+ext.appVersionName = '$version_name'"
 
     if [ -f "$file" ] && [ "$content" = "$(cat "$file")" ]; then
         return 0
@@ -230,28 +251,42 @@ apply_config() {
 
     config_file=$(merge_config_with_default "$config_file")
 
-    # The application id is also the Java package, so it has to be known before the
-    # template is unpacked into app/src
-    local app_id
-    app_id=$(sed -n 's/^[[:space:]]*id[[:space:]]*=[[:space:]]*//p' "$config_file" | head -n1 | tr -d '[:space:]')
-    if [ -n "$app_id" ]; then
-        chid "$app_id"
-    else
-        sync_sources
-    fi
+    # The template lands at the fixed package path, so the id no longer has to be known before the
+    # unpack: it only rewrites the applicationId in config.gradle, from the key loop below
+    sync_sources
+
+    # config.gradle is a pure function of *this* config, so start from the defaults: the dispatch
+    # reads the previous generation into these globals, and neither chid nor set_version rewrote the
+    # file when nothing changed, so a value could be inherited. A mid-loop error now leaves the
+    # previous file intact instead of half-updated (the new appId with the old version), D39.
+    appid="myexample"
+    appVersionCode=1
+    appVersionName="1.0"
 
     while IFS='=' read -r key value || [ -n "$key" ]; do
         # Skip empty lines and comments
         [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
 
+        # An inline comment is ` # ...` — but not inside a quoted value. Everything after the first `=`
+        # is the value, and a value that has to keep a ` #` of its own (a display name with "#1", a
+        # Basic Auth password, a cookie) is written in quotes; `set_var()` strips them later. Cutting
+        # at ` #` unconditionally used to change such values silently — the app shipped under a
+        # different name and nothing said so.
+        if [[ "$value" =~ ^[[:space:]]*\"(.*)\"[[:space:]]*(#.*)?$ ]] \
+            || [[ "$value" =~ ^[[:space:]]*\'(.*)\'[[:space:]]*(#.*)?$ ]]; then
+            value="${BASH_REMATCH[1]}"
+        else
+            value="${value%%[[:space:]]#*}"
+        fi
+
         # Remove spaces, tabs, and invisible unicode characters (zero-width space)
         key=$(echo "$key" | tr -cd '[:alnum:]_')
-        # Trim whitespaces
-        value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        # Trim whitespaces. `printf`, not `echo`: a bare `-n` (or -e/-E) value came back empty
+        value=$(printf '%s' "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
 
         case "$key" in
             "id")
-                # Already applied above, before the sources were unpacked
+                chid "$value"
                 ;;
             "name")
                 rename "$value"
