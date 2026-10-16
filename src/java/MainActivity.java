@@ -810,9 +810,12 @@ public class MainActivity extends AppCompatActivity {
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
         request.setMimeType(mimetype);
 
-        // Set cookies for the download request, it's important for authorized downloads
+        // Set cookies for the download request, it's important for authorized downloads. The header
+        // is skipped when there is nothing to send: addRequestHeader turns a null value into "" on
+        // every API level (26 through 36 — it throws only for a null *name*), which would put an
+        // empty `cookie:` header on the wire. A test of the name, not a guard against a crash.
         String cookies = CookieManager.getInstance().getCookie(url);
-        request.addRequestHeader("cookie", cookies);
+        if (cookies != null && !cookies.isEmpty()) request.addRequestHeader("cookie", cookies);
         request.addRequestHeader("User-Agent", userAgent);
 
         // Set download description and title using string resources
