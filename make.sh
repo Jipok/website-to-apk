@@ -948,22 +948,39 @@ get_java() {
 }
 
 
+# Java 17 or newer, and a real JDK. AGP 8.x runs on any 17+ (measured: a JDK 21 produces the same
+# classes.dex, resources.arsc and AndroidManifest.xml as the JDK 17 build), but a *JRE* passes a
+# version test and then the build dies inside Gradle with "Toolchain ... does not provide the
+# required capabilities: [JAVA_COMPILER]".
+readonly MIN_JAVA=17
+
+# "21.0.12.1" -> 21, "1.8.0_382" -> 8, empty when unparsable
+java_major() {
+    printf '%s' "$1" | sed 's/^1\.//; s/[^0-9].*$//'
+}
+
+# Is $1 a JDK (bin/javac) of version MIN_JAVA or newer?
+java_ok() {
+    [ -x "$1/bin/javac" ] || return 1
+    local v
+    v=$(java_major "$("$1/bin/java" -version 2>&1 | head -n 1 | cut -d'"' -f2)")
+    [ -n "$v" ] && [ "$v" -ge "$MIN_JAVA" ]
+}
+
 # Check Java version and update JAVA_HOME if needed
 check_and_find_java() {
     # First check existing JAVA_HOME
     if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
-        version=$("$JAVA_HOME/bin/java" -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
-        if [ "$version" = "17" ]; then
+        if java_ok "$JAVA_HOME"; then
             info "Using system JAVA_HOME: $JAVA_HOME"
             export PATH="$JAVA_HOME/bin:$PATH"
             return 0
-        else
-            warn "Current JAVA_HOME points to wrong version: $version"
         fi
+        warn "Current JAVA_HOME is not a JDK $MIN_JAVA or newer: $JAVA_HOME"
     fi
 
     # Then check local installation
-    if [ -d "$PWD/jvm/jdk-17.0.2" ]; then
+    if [ -x "$PWD/jvm/jdk-17.0.2/bin/javac" ]; then
         info "Using local Java installation"
         export JAVA_HOME="$PWD/jvm/jdk-17.0.2"
         export PATH="$JAVA_HOME/bin:$PATH"
@@ -973,14 +990,11 @@ check_and_find_java() {
     # Finally check /usr/lib/jvm
     if [ -d "/usr/lib/jvm" ]; then
         while IFS= read -r java_path; do
-            if [ -x "$java_path/bin/java" ]; then
-                version=$("$java_path/bin/java" -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
-                if [ "$version" = "17" ]; then
-                    info "Found system Java 17: $java_path"
-                    export JAVA_HOME="$java_path"
-                    export PATH="$JAVA_HOME/bin:$PATH"
-                    return 0
-                fi
+            if java_ok "$java_path"; then
+                info "Found system Java: $java_path"
+                export JAVA_HOME="$java_path"
+                export PATH="$JAVA_HOME/bin:$PATH"
+                return 0
             fi
         done < <(find /usr/lib/jvm -maxdepth 1 -type d)
     fi
@@ -1018,7 +1032,7 @@ command -v wget >/dev/null 2>&1 || error "wget not found. Please install wget"
 
 # Try to find Java 17
 if ! check_and_find_java; then
-    warn "Java 17 not found"
+    warn "Java $MIN_JAVA or newer (a JDK) not found"
     read -p "Would you like to download OpenJDK 17 to ./jvm? (y/N) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -1027,17 +1041,17 @@ if ! check_and_find_java; then
             error "Java installation failed"
         fi
     else
-        error "Java 17 is required"
+        error "Java $MIN_JAVA or newer (a JDK) is required"
     fi
 fi
 
 # Final verification
-java_version=$(java -version 2>&1 | head -n 1 | cut -d'"' -f2 | cut -d'.' -f1)
-if [ "$java_version" != "17" ]; then
-    error "Wrong Java version: $java_version. Java 17 is required"
+java_version=$(java_major "$(java -version 2>&1 | head -n 1 | cut -d'"' -f2)")
+if [ -z "$java_version" ] || [ "$java_version" -lt "$MIN_JAVA" ]; then
+    error "Wrong Java version: ${java_version:-unknown}. Java $MIN_JAVA or newer is required"
 fi
 
-command -v adb >/dev/null 2>&1 || warn "adb not found. './make.sh try' will not work"
+command -v adb >/dev/null 2>&1 || warn "adb not found. './make.sh test' will not work"
 
 if [ ! -d "$ANDROID_HOME" ]; then
     warn "Android Command Line Tools not found: ./cmdline-tools"
