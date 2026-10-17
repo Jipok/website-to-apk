@@ -66,6 +66,7 @@ Pre-configured configuration files for YouTube are available in the <code>confs/
 - `./make.sh aab` - Build AAB from already generated sources
 - `./make.sh apply_config` - Apply settings from configuration file
 - `./make.sh get_java` - Download OpenJDK 17 locally
+- `./make.sh get_tools` - Download Android SDK command-line tools locally
 
 ## Userscripts Support
 
@@ -231,18 +232,12 @@ The app injects a `window.WebToApk` object into every page. The methods are avai
 | `removeDownload(id)` | Delete one of the app's downloads — record and file — and return `true` if it went. |
 | `openDownloadedFile(id)` | Open a finished download with the system viewer. |
 | `shareDownloadedFile(id)` | Send a finished download to another app. |
-| `appendChunk(base64)` | One blob chunk, already base64-encoded. Returns `false` if the bytes did not land — no destination, a full disk, a revoked document. |
-| `finishSave(ok)` | End a blob export; `ok = false` (or a failed chunk before it) shows the "download failed" toast. |
 
 See also the hooks `WebToApk.onPullToRefresh` (above), `WebToApk.onDownloadStarted(id, url)` and `WebToApk.onDownloadComplete(id)`.
 
-Downloads are handed to `DownloadManager`, so they keep going while the app is backgrounded or even killed. `getDownloads()` is therefore the source of truth: it reports `bytes`/`total` for an in-flight download, so a page can draw its own progress bar, plus a `status` of `pending`, `running`, `paused`, `successful` or `failed` (`total` stays `-1` until the size is known). The two hooks are best-effort — a page-defined callback only exists while the app is alive — so use them as a nudge to re-check `getDownloads()`, and poll it at a sane rate rather than in a tight loop. Downloads are scoped to the app: `getDownloads()` and `removeDownload()` only ever see files this app downloaded, and removing one deletes the file from `Downloads/` — no permission and no dialog are involved. The ids are remembered across restarts, so a page can clean up after itself. Every entry also carries the `url` the download was started from, and `onDownloadStarted(id, url)` hands it over at start time — that is the only way to tell which id belongs to which request when several run at once, since the hook itself carries nothing but the id.
+HTTP/HTTPS downloads are handed to Android's `DownloadManager`, so they keep running in the background. `getDownloads()` returns their progress and status (`pending`, `running`, `paused`, `successful`, `failed`; `total` is `-1` until known) and only sees files downloaded by this app. Page-generated `blob:` and `data:` downloads open the system file picker and stream directly to disk.
 
-Downloads a page generates itself — `blob:` and `data:` URLs, which `DownloadManager` cannot fetch — take the system file picker instead. Clicking an `<a download href="blob:...">` asks the user where to put it, then `helpers.js` streams the bytes there in 1 MB chunks, so memory stays flat no matter how large the file is. A page driving that protocol itself calls `appendChunk(base64)` and then `finishSave(ok)`; a chunk answers `false` when the bytes did not land (no destination, a full disk, a document the user or the provider revoked), and `finishSave` shows the "download failed" toast for either kind of failure. Nothing is reported as saved unless it was: the write is the only place that can tell, so its failure is not swallowed.
-
-`navigator.mediaSession` (metadata, playback state, position, action handlers) is forwarded to the native media notification automatically — no direct calls needed.
-
-`helpers.js` additionally polyfills a few web APIs:
+`helpers.js` forwards `navigator.mediaSession` to the native media notification and lock-screen controls, and polyfills standard web APIs:
 
 | Global | Description |
 |---|---|
@@ -267,18 +262,6 @@ ca = my_root_ca.pem     # Relative to the config file, space-separated list is a
 edited. The name must be lowercase (`my_ca.pem`) because it becomes the resource name. The list is
 rebuilt on every build, so removing a certificate from the config removes it from the app.
 
-A certificate error on the main page is **cancelled** by default. `allowSslErrors = true` shows a
-dialog instead, which lets the user through anyway — the same escape hatch a browser offers, but it
-is off unless you ask for it, and it never applies to background requests. The dialog names the site
-and what is wrong with its certificate (expired, not valid yet, issued for a different host, or not
-trusted), because "continue anyway" is not a question a user can answer without knowing whom they
-are trusting.
-
-Basic Auth is answered in one of two ways: `basicAuth = login:password` signs in automatically (once
-per host and realm, and only for `mainURL`'s host, or its subdomains with `allowSubdomains`), and
-anything else — a different host, a second challenge, no `basicAuth` at all — shows the prompt, which
-names the host and the realm it is asking for.
-
 </details>
 
 <details>
@@ -301,7 +284,7 @@ Notes:
 <details>
 <summary><b>Notifications & Push</b></summary>
 
-**Local notifications work.** While your page is open it can show real Android notifications through the web `Notification` API (`helpers.js` polyfills `new Notification(...)`, `Notification.requestPermission()` and `Notification.permission` on top of the native bridge), and `navigator.mediaSession` drives the media notification and the lock-screen controls.
+**Local notifications work** while the page is open via the standard web `Notification` API (or `WebToApk.showNotification`).
 
 **Server push to a closed app does not work, and it is not something this project can fix.** Android WebView has no Service Worker and no Push API (Google marked Web Push in WebView as WONTFIX), so there is no way to wake the app from your server once it is closed.
 
@@ -313,34 +296,16 @@ If you need real push, open an issue. An **optional** integration (FCM, HMS or a
 
 ## Technical Details
 
-- Target Android API: 33 (Android 13)
+- Target Android API: 36 (Android 16)
 - Minimum Android API: 26 (Android 8.0)
-- Build tools version: 33.0.2
-- Gradle version: 7.4
+- Android Gradle Plugin: 8.10.0
+- Gradle version: 8.11.1
 - Required Java version: 17 or newer (a JDK, not a JRE)
 
 ## Notes
 
-- Web SQL is off and passwords are never saved, so those two settings are no longer config keys.
-  `setSavePassword` has been an explicit no-op in the WebView implementation since at least WebView
-  76 and there is no password store behind it. `setDatabaseEnabled` is a no-op on current WebView
-  (Web SQL was removed from Chromium), but an old engine still honours it — so it is pinned to
-  `false`, which makes an old device behave like a new one instead of exposing a capability that
-  depends on the installed WebView. A config that still sets `SavePassword` or `DatabaseEnabled`
-  fails to apply and the line has to be deleted
-- All app data is stored in the app's private directory
-- The keystore `my-release-key.jks` (in the repository root) password is set to "123456" by default
-- Internet permission is required and automatically included
-- `blockLocalhostRequests` covers loopback however it is spelled: `127.0.0.0/8`, `::1`, `0.0.0.0`, `localhost`
-- `forceDarkTheme` reports a dark system to the page and themes the app dark, whatever the real system setting is: the WebView answers `prefers-color-scheme: dark` and the app uses its `values-night` colours. It does **not** restyle the page — a site without a dark theme stays as it is, so add a userscript if you want one
-- If you need to support [different Android versions](https://apilevels.com/), edit `build.gradle` accordingly
-- Based on the original work from: https://github.com/successtar/web-to-app  
-
-## Media
-
-The bridge has a media surface — `updateMediaMetadata`, `updateMediaPlaybackState`,
-`updateMediaPositionState` and `setMediaActionHandlers` — which drives the foreground service that
-owns the notification and the lock-screen controls. It is not meant to be called directly: a WebView
-has no `navigator.mediaSession` integration at all, so `helpers.js` defines that standard object and
-forwards it here. A page that uses `navigator.mediaSession` gets working system controls without
-knowing this app exists.
+- App data lives in the app's private directory
+- Keystore `my-release-key.jks` (repo root), password `123456`
+- `blockLocalhostRequests` covers `127.0.0.0/8`, `::1`, `0.0.0.0`, `localhost`
+- Other Android versions: edit `src/build.gradle` ([API levels](https://apilevels.com/))
+- Based on https://github.com/successtar/web-to-app
